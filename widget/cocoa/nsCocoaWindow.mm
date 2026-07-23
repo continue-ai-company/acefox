@@ -4605,6 +4605,13 @@ nsresult nsCocoaWindow::Create(nsIWidget* aParent, const DesktopIntRect& aRect,
                          mBorderStyle, false, aInitData->mIsPrivate);
   NS_ENSURE_SUCCESS(rv, rv);
 
+  // Mark the first top-level window without a parent as the primary window.
+  static bool sPrimaryWindowCreated = false;
+  if (!sPrimaryWindowCreated && !aParent && mWindowType == WindowType::TopLevel) {
+    mIsPrimaryWindow = true;
+    sPrimaryWindowCreated = true;
+  }
+
   mIsAnimationSuppressed = aInitData->mIsAnimationSuppressed;
 
   // create our content NSView and hook it up to our parent. Recall that
@@ -5034,7 +5041,10 @@ void nsCocoaWindow::Show(bool aState) {
     // If we had set the activationPolicy to accessory, then right now we won't
     // have a dock icon. Make sure that we undo that and show a dock icon now
     // that we're going to show a window.
-    if (NSApp.activationPolicy != NSApplicationActivationPolicyRegular) {
+    // However, respect MOZ_APP_NO_DOCK if explicitly set.
+    char* mozAppNoDock = PR_GetEnv("MOZ_APP_NO_DOCK");
+    bool keepNoDock = mozAppNoDock && strcmp(mozAppNoDock, "") != 0;
+    if (NSApp.activationPolicy != NSApplicationActivationPolicyRegular && !keepNoDock) {
       NSApp.activationPolicy = NSApplicationActivationPolicyRegular;
       PR_SetEnv("MOZ_APP_NO_DOCK=");
     }
@@ -5117,6 +5127,13 @@ void nsCocoaWindow::Show(bool aState) {
       if (mAlwaysOnTop || mIsAlert) {
         [mWindow orderFront:nil];
       } else {
+        // When running as an accessory app (no dock icon), the app isn't
+        // automatically activated when showing a window. Explicitly activate
+        // it so the window can receive keyboard focus.
+        if (keepNoDock) {
+          [[NSRunningApplication currentApplication]
+              activateWithOptions:NSApplicationActivateIgnoringOtherApps];
+        }
         [mWindow makeKeyAndOrderFront:nil];
       }
       NS_OBJC_END_TRY_IGNORE_BLOCK;
@@ -5313,10 +5330,23 @@ void nsCocoaWindow::SetSizeConstraints(const SizeConstraints& aConstraints) {
 // Coordinates are desktop pixels
 void nsCocoaWindow::Move(double aX, double aY) {
   NS_OBJC_BEGIN_TRY_IGNORE_BLOCK;
-
+  printf_stderr("nsCocoaWindow::Move [%f,%f]\n", aX, aY);
   if (!mWindow) {
     return;
   }
+
+  //>>>Acefox patched:
+  if(aX<=-300000){
+    printf_stderr("nsCocoaWindow::Will hide window!");
+    [mWindow setAlphaValue:0.0];
+    [mWindow setIgnoresMouseEvents:YES];
+    return;
+  }else if(aX>=300000){
+    printf_stderr("nsCocoaWindow::Will un-hide window!");
+    [mWindow setAlphaValue:1.0];
+    [mWindow setIgnoresMouseEvents:NO];
+    return;
+  }//<<<Acefox patched
 
   // The point we have is in Gecko coordinates (origin top-left). Convert
   // it to Cocoa ones (origin bottom-left).
@@ -7176,6 +7206,13 @@ void nsCocoaWindow::CocoaWindowDidResize() {
   nsIWidgetListener* listener =
       mGeckoWindow ? mGeckoWindow->GetWidgetListener() : nullptr;
   if (listener) listener->RequestWindowClose(mGeckoWindow);
+  if (mGeckoWindow && mGeckoWindow->IsPrimaryWindow()) {
+    [[NSDistributedNotificationCenter defaultCenter]
+        postNotificationName:@"com.ai2apps.firefox.windowWillClose"
+                      object:nil
+                    userInfo:nil
+          deliverImmediately:YES];
+  }
   return NO;  // gecko will do it
 }
 
@@ -7185,6 +7222,13 @@ void nsCocoaWindow::CocoaWindowDidResize() {
 
 - (void)windowWillMiniaturize:(NSNotification*)aNotification {
   RollUpPopups();
+  if (mGeckoWindow && mGeckoWindow->IsPrimaryWindow()) {
+    [[NSDistributedNotificationCenter defaultCenter]
+        postNotificationName:@"com.ai2apps.firefox.windowWillMiniaturize"
+                      object:nil
+                    userInfo:nil
+          deliverImmediately:YES];
+  }
 }
 
 - (void)windowDidMiniaturize:(NSNotification*)aNotification {
@@ -7193,6 +7237,13 @@ void nsCocoaWindow::CocoaWindowDidResize() {
   }
   mGeckoWindow->FinishCurrentTransitionIfMatching(
       nsCocoaWindow::TransitionType::Miniaturize);
+  if (mGeckoWindow->IsPrimaryWindow()) {
+    [[NSDistributedNotificationCenter defaultCenter]
+        postNotificationName:@"com.ai2apps.firefox.windowDidMiniaturize"
+                      object:nil
+                    userInfo:nil
+          deliverImmediately:YES];
+  }
 }
 
 - (void)windowDidDeminiaturize:(NSNotification*)aNotification {
@@ -7201,6 +7252,13 @@ void nsCocoaWindow::CocoaWindowDidResize() {
   }
   mGeckoWindow->FinishCurrentTransitionIfMatching(
       nsCocoaWindow::TransitionType::Deminiaturize);
+  if (mGeckoWindow->IsPrimaryWindow()) {
+    [[NSDistributedNotificationCenter defaultCenter]
+        postNotificationName:@"com.ai2apps.firefox.windowDidDeminiaturize"
+                      object:nil
+                    userInfo:nil
+          deliverImmediately:YES];
+  }
 }
 
 - (BOOL)windowShouldZoom:(NSWindow*)window toFrame:(NSRect)proposedFrame {
@@ -8054,6 +8112,17 @@ static bool ShouldShiftByMenubarHeightInFullscreen(nsCocoaWindow* aWindow) {
 - (void)sendEvent:(NSEvent*)anEvent {
   if (MaybeDropEventForModalWindow(anEvent, self.delegate)) {
     return;
+  }
+  // When running as an accessory app (no dock icon, NSApplicationActivationPolicyAccessory),
+  // clicking on a window does not automatically activate the app. We need to
+  // explicitly activate it so the window can receive keyboard focus.
+  if (NSApp.activationPolicy == NSApplicationActivationPolicyAccessory &&
+      ![NSApp isActive] &&
+      ([anEvent type] == NSEventTypeLeftMouseDown ||
+       [anEvent type] == NSEventTypeRightMouseDown ||
+       [anEvent type] == NSEventTypeOtherMouseDown)) {
+    [[NSRunningApplication currentApplication]
+        activateWithOptions:NSApplicationActivateIgnoringOtherApps];
   }
   [super sendEvent:anEvent];
 }

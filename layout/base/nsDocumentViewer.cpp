@@ -2006,6 +2006,7 @@ nsDocumentViewer::SetBounds(const LayoutDeviceIntRect& aBounds) {
 NS_IMETHODIMP
 nsDocumentViewer::Move(int32_t aX, int32_t aY) {
   NS_ENSURE_TRUE(mDocument, NS_ERROR_NOT_AVAILABLE);
+  printf_stderr("nsDocumentViewer::Move [%d,%d]\n", aX, aY);
   mBounds.MoveTo(aX, aY);
   if (mWindow) {
     mWindow->Move(aX, aY);

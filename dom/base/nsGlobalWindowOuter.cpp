@@ -3706,7 +3706,6 @@ void nsGlobalWindowOuter::CheckSecurityLeftAndTop(int32_t* aLeft, int32_t* aTop,
   // This one is harder. We have to get the screen size and window dimensions.
 
   // Check security state for use in determing window dimensions
-
   if (aCallerType != CallerType::System) {
     // if attempting to move the window, hide any open popups
     nsContentUtils::HidePopupsInDocument(mDoc);

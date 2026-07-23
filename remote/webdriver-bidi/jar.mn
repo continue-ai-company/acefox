@@ -29,6 +29,7 @@ remote.jar:
   content/webdriver-bidi/modules/root/session.sys.mjs (modules/root/session.sys.mjs)
   content/webdriver-bidi/modules/root/storage.sys.mjs (modules/root/storage.sys.mjs)
   content/webdriver-bidi/modules/root/webExtension.sys.mjs (modules/root/webExtension.sys.mjs)
+  content/webdriver-bidi/modules/root/downloads.sys.mjs (modules/root/downloads.sys.mjs)
 
   # WebDriver BiDi windowglobal modules
   content/webdriver-bidi/modules/windowglobal/_configuration.sys.mjs (modules/windowglobal/_configuration.sys.mjs)

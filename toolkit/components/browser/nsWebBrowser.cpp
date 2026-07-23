@@ -884,7 +884,6 @@ NS_IMETHODIMP
 nsWebBrowser::SetPosition(int32_t aX, int32_t aY) {
   int32_t cx = 0;
   int32_t cy = 0;
-
   GetSize(&cx, &cy);
 
   return SetPositionAndSize(aX, aY, cx, cy, 0);

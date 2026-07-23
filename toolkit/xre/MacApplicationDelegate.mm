@@ -301,6 +301,13 @@ nsTArray<nsCString> TakeStartupURLs() { return std::move(StartupURLs()); }
   if (!cancelQuit) return NSTerminateNow;
 
   cancelQuit->SetData(false);
+
+  [[NSDistributedNotificationCenter defaultCenter]
+      postNotificationName:@"com.ai2apps.firefox.applicationWillTerminate"
+                    object:nil
+                  userInfo:nil
+        deliverImmediately:YES];
+
   obsServ->NotifyObservers(cancelQuit, "quit-application-requested", nullptr);
 
   bool abortQuit;

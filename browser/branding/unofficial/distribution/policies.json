@@ -1,0 +1,28 @@
+{
+  "policies": {
+    "DisableFirefoxAccounts": true,
+    "DontCheckDefaultBrowser": true,
+    "FirefoxHome": {
+      "TopSites": false,
+      "SponsoredTopSites": false,
+      "Highlights": false,
+      "Pocket": false,
+      "Stories": false,
+      "SponsoredPocket": false,
+      "SponsoredStories": false,
+      "Snippets": false,
+      "ManualAppUpdateOnly": true
+    },
+    "PopupBlocking": {
+      "Default": false
+    },
+    "ShowHomeButton": false,
+    "DisableTelemetry": true,
+    "DisableSystemAddonUpdate": true,
+    "DisablePocket": true,
+    "DisableFirefoxStudies": true,
+    "DisableAppUpdate": true,
+    "AppAutoUpdate": false,
+    "AppUpdatePin": false
+  }
+}

@@ -692,7 +692,6 @@ nsresult AppWindow::MoveResize(const Maybe<DesktopPoint>& aPosition,
                                const Maybe<DesktopSize>& aSize, bool aRepaint) {
   NS_ENSURE_STATE(mWindow);
   PersistentAttributes dirtyAttributes;
-
   if (!aPosition && !aSize) {
     MOZ_ASSERT_UNREACHABLE("Doing nothing?");
     return NS_ERROR_UNEXPECTED;

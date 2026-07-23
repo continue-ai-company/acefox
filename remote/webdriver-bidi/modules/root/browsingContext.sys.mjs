@@ -43,6 +43,12 @@ ChromeUtils.defineESModuleGetters(lazy, {
   WindowGlobalMessageHandler:
     "chrome://remote/content/shared/messagehandler/WindowGlobalMessageHandler.sys.mjs",
   windowManager: "chrome://remote/content/shared/WindowManager.sys.mjs",
+  Downloads: "resource://gre/modules/Downloads.sys.mjs",
+  //>>>Acefox patched
+  Readerable: "resource://gre/modules/Readerable.sys.mjs",
+  isProbablyReaderable: "resource://gre/modules/Readerable.sys.mjs",
+  ReaderMode: "moz-src:///toolkit/components/reader/ReaderMode.sys.mjs",
+  //<<<Acefox patched
 });
 
 ChromeUtils.defineLazyGetter(lazy, "logger", () =>
@@ -171,6 +177,26 @@ const WaitCondition = {
  *     Dimensions to set the viewport to, or `null` to reset it
  *     to the original dimensions.
  */
+//<<AceFox
+function toDownloadPayload(download) {
+  return {
+    id: download.guid ?? null, // 新版本有 guid；老版本可 fallback 到 target.path
+    url: download.source?.url ?? null,
+    referrer: download.source?.referrerInfo?.originalReferrer?.spec ?? null,
+    suggestedFilename: download.target?.path?.split(/[\\/]/).pop() ?? null,
+    file: download.target?.path ?? null,            // 若你不想暴露绝对路径，可去掉
+    mime: download.contentType ?? null,
+    totalBytes: download.totalBytes ?? null,
+    receivedBytes: download.currentBytes ?? null,
+    isPrivate: !!download.source?.isPrivate,
+    startTime: download.startTime ?? null,
+    state: download.succeeded ? "completed" :
+        download.canceled ? "canceled" :
+            download.error ? "failed" : "inProgress",
+  };
+}
+//>>AceFox
+
 
 class BrowsingContextModule extends RootBiDiModule {
   #blockedCreateCommands;
@@ -178,6 +204,10 @@ class BrowsingContextModule extends RootBiDiModule {
   #navigationListener;
   #promptListener;
   #subscribedEvents;
+  //>>AceFox
+  #downloadsList;
+  #downloadsView;
+  //<<AceFox
 
   /**
    * Create a new module instance.
@@ -187,6 +217,14 @@ class BrowsingContextModule extends RootBiDiModule {
    */
   constructor(messageHandler) {
     super(messageHandler);
+
+    //>>AceFox:
+    Cu.printStderr(`browseringContext.sys.mjs: BrowsingContextModule initedd.\n`);
+    Cu.printStderr(`Downloads: ${lazy.Downloads}\n`);
+    this.#downloadsList=null;
+    this.downloadsView=null;
+    //<<AceFox:
+
 
     this.#contextListener = new lazy.BrowsingContextListener();
     this.#contextListener.on("attached", this.#onContextAttached);
@@ -1693,6 +1731,254 @@ class BrowsingContextModule extends RootBiDiModule {
     );
   }
 
+  //>>>Acefox patched:
+  /**
+   * Set browsing context's window to a given rect.
+   *
+   * @param {object=} options
+   * @param {string=} options.context
+   *     Id of the browsing context.
+   * @param {(number|null)=} options.x
+   *     X pos-value to move the window
+   * @param {(number|null)=} options.y
+   *     Y pos-value to move the window
+   * @param {(number|null)=} options.width
+   *     X size-value to resize the window
+   * @param {(number|null)=} options.height
+   *     Y size-value to resize the window
+   * @throws {InvalidArgumentError}
+   *     Raised if an argument is of an invalid type or value.
+   * @throws {UnsupportedOperationError}
+   *     Raised when the command is called on Android.
+   */
+  async moveBrowserWindow(options = {}) {
+    const {
+      context: contextId = null,
+      x,
+      y,
+      width,
+      height
+    } = options;
+
+    if (contextId !== null) {
+      lazy.assert.string(
+          contextId,
+          lazy.pprint`Expected "context" to be a string, got ${contextId}`
+      );
+    }
+
+    if (x !== undefined && x !== null) {
+      lazy.assert.number(
+          x,
+          lazy.pprint`Expected "x" to be a number or null, got ${x}`
+      );
+    }
+
+    if (y !== undefined && y !== null) {
+      lazy.assert.number(
+          y,
+          lazy.pprint`Expected "y" to be a number or null, got ${y}`
+      );
+    }
+
+    if (width !== undefined && width !== null) {
+      lazy.assert.number(
+          width,
+          lazy.pprint`Expected "width" to be a number or null, got ${width}`
+      );
+      lazy.assert.that(
+          value => value > 0,
+          lazy.pprint`Expected "width" to be greater than 0, got ${width}`
+      )(width);
+    }
+
+    if (height !== undefined && height !== null) {
+      lazy.assert.number(
+          height,
+          lazy.pprint`Expected "height" to be a number or null, got ${height}`
+      );
+      lazy.assert.that(
+          value => value > 0,
+          lazy.pprint`Expected "height" to be greater than 0, got ${height}`
+      )(width);
+    }
+
+    if (lazy.AppInfo.isAndroid) {
+      // Bug 1840084: Add Android support for modifying the viewport.
+      throw new lazy.error.UnsupportedOperationError(
+          `Command not yet supported for ${lazy.AppInfo.name}`
+      );
+    }
+    const context = this.#getBrowsingContext(contextId);
+    const targetTab = lazy.TabManager.getTabForBrowsingContext(context);
+    const targetWindow = lazy.TabManager.getWindowForTab(targetTab);
+
+    // Store current dimensions
+    const currentX = targetWindow.screenX;
+    const currentY = targetWindow.screenY;
+    const currentWidth = targetWindow.outerWidth;
+    const currentHeight = targetWindow.outerHeight;
+    let tx,ty,tw,th;
+    tx=x;ty=y;tw=width;th=height;
+    // Apply new dimensions if provided
+    if (x === undefined || x=== null) {
+        tx=currentX;
+    }
+    if (y === undefined || y=== null) {
+      ty=currentY;
+    }
+    if (width === undefined || width=== null) {
+      tw=currentWidth;
+    }
+    if (height === undefined || height=== null) {
+      th=currentHeight;
+    }
+    lazy.windowManager.adjustWindowGeometry(targetWindow,tx,ty,tw,th);
+  }
+
+  /**
+   * Hide a browsing context's window.
+   *
+   * @param {object=} options
+   * @param {string=} options.context
+   *     Id of the browsing context.
+   * @throws {InvalidArgumentError}
+   *     Raised if an argument is of an invalid type or value.
+   * @throws {UnsupportedOperationError}
+   *     Raised when the command is called on Android.
+   */
+  async hideBrowserWindow(options = {}) {
+    const {
+      context: contextId = null,
+    } = options;
+
+    if (contextId !== null) {
+      lazy.assert.string(
+          contextId,
+          lazy.pprint`Expected "context" to be a string, got ${contextId}`
+      );
+    }
+
+    if (lazy.AppInfo.isAndroid) {
+      // Bug 1840084: Add Android support for modifying the viewport.
+      throw new lazy.error.UnsupportedOperationError(
+          `Command not yet supported for ${lazy.AppInfo.name}`
+      );
+    }
+    const context = this.#getBrowsingContext(contextId);
+    const targetTab = lazy.TabManager.getTabForBrowsingContext(context);
+    const targetWindow = lazy.TabManager.getWindowForTab(targetTab);
+
+    // Store current dimensions
+    const currentX = targetWindow.screenX;
+    const currentY = targetWindow.screenY;
+    const currentWidth = targetWindow.outerWidth;
+    const currentHeight = targetWindow.outerHeight;
+    lazy.windowManager.adjustWindowGeometry(targetWindow,-500000,currentY,currentWidth,currentHeight);
+  }
+
+  /**
+   * Un-hide a browsing context's window.
+   *
+   * @param {object=} options
+   * @param {string=} options.context
+   *     Id of the browsing context.
+   * @throws {InvalidArgumentError}
+   *     Raised if an argument is of an invalid type or value.
+   * @throws {UnsupportedOperationError}
+   *     Raised when the command is called on Android.
+   */
+  async unhideBrowserWindow(options = {}) {
+    const {
+      context: contextId = null,
+    } = options;
+
+    if (contextId !== null) {
+      lazy.assert.string(
+          contextId,
+          lazy.pprint`Expected "context" to be a string, got ${contextId}`
+      );
+    }
+
+    if (lazy.AppInfo.isAndroid) {
+      // Bug 1840084: Add Android support for modifying the viewport.
+      throw new lazy.error.UnsupportedOperationError(
+          `Command not yet supported for ${lazy.AppInfo.name}`
+      );
+    }
+    const context = this.#getBrowsingContext(contextId);
+    const targetTab = lazy.TabManager.getTabForBrowsingContext(context);
+    const targetWindow = lazy.TabManager.getWindowForTab(targetTab);
+
+    // Store current dimensions
+    const currentX = targetWindow.screenX;
+    const currentY = targetWindow.screenY;
+    const currentWidth = targetWindow.outerWidth;
+    const currentHeight = targetWindow.outerHeight;
+    lazy.windowManager.adjustWindowGeometry(targetWindow,500000,currentY,currentWidth,currentHeight);
+  }
+
+  /**
+   * Read page's article content.
+   *
+   * @param {object=} options
+   * @param {string=} options.context
+   *     Id of the browsing context.
+   * @throws {InvalidArgumentError}
+   *     Raised if an argument is of an invalid type or value.
+   * @throws {UnsupportedOperationError}
+   *     Raised when the command is called on Android.
+   */
+  async readArticle(options = {}) {
+    const {
+      context: contextId = null,
+    } = options;
+
+    if (contextId !== null) {
+      lazy.assert.string(
+          contextId,
+          lazy.pprint`Expected "context" to be a string, got ${contextId}`
+      );
+    }
+    const bc = this.#getBrowsingContext(contextId);
+    if (!bc){
+      return { text: "1" }
+    }
+
+    //const win = bc.window;
+    const targetTab = lazy.TabManager.getTabForBrowsingContext(bc);
+    const win = lazy.TabManager.getWindowForTab(targetTab);
+
+    if (!win || !win.document) {
+      return { text: "2",win:""+win,doc:""+win?.document};
+    }
+    const doc=win.document;
+    /*
+    try {
+      const isReaderable = await lazy.isProbablyReaderable(doc);
+      if (!isReaderable) {
+        return { text: "3" };
+      }
+    } catch (err) {
+      // 某些跨进程或奇怪文档会抛错，按约定返回空
+      return { text: "4" };
+    }
+    */
+    try {
+      // 解析主文档；ReaderMode.parseDocument 返回 { title, content, textContent, byline, length, excerpt, siteName, ... }
+      const article = await lazy.ReaderMode.parseDocument(doc);
+      if (!article || !article.textContent) return { text: "5"+article };
+
+      const result = { text: article.textContent };
+      if (html && article.content) result.html = article.content;
+      if (article.title) result.title = article.title;
+      return result;
+    } catch (e) {
+      return { text: "6" };
+    }
+  }
+  //<<<Acefox patched:
+
   /**
    * Start and await a navigation on the provided BrowsingContext. Returns a
    * promise which resolves when the navigation is done according to the provided
@@ -2212,6 +2498,65 @@ class BrowsingContextModule extends RootBiDiModule {
     }
   }
 
+  //<<AceFox
+  async #startListenDownloads(){
+    if (this.#downloadsList) {
+      return;
+    }
+    Cu.printStderr(`#startListenDownloads: ${lazy.Downloads}\n`);
+    this.#downloadsList = await lazy.Downloads.getList(lazy.Downloads.ALL);
+    this.#downloadsView = {
+      onDownloadAdded: download => {
+        // 刚加入列表即视为 started（Firefox 下载对象创建即入列）
+        //this.#emit("downloads.downloadStarted", { download: toDownloadPayload(download) });
+        this.emitEvent(
+            "browsingContext.downloadStarted",
+            toDownloadPayload(download)
+        );
+      },
+
+      onDownloadChanged: download => {
+        // 某些平台/保存器不会触发 onchange；兜底从这里也发 updated/finished
+        const payload = toDownloadPayload(download);
+        //this.#emit("browsingContext.downloadUpdated", { download: payload });
+        this.emitEvent(
+            "browsingContext.downloadUpdated",
+            {
+              download:payload,
+            }
+        );
+        if (download.succeeded || download.canceled || download.error) {
+          /*this.#emit("browsingContext.downloadFinished", {
+            download: payload,
+            result: download.succeeded ? "completed" :
+                download.canceled ? "canceled" : "failed",
+            error: download.error ? { message: download.error.message ?? null } : null,
+          });*/
+          this.emitEvent(
+              "browsingContext.downloadFinished",
+              {
+                download:payload,
+                result: download.succeeded ? "completed" :
+                    download.canceled ? "canceled" : "failed",
+                error: download.error ? { message: download.error.message ?? null } : null,
+              }
+          );
+        }
+      },
+
+      onDownloadRemoved: download => {
+        //this.#emit("downloads.downloadRemoved", { download: toDownloadPayload(download) });
+        this.emitEvent(
+            "downloads.downloadRemoved",
+            toDownloadPayload(download)
+        );
+      },
+    };
+
+    this.#downloadsList.addView(this.#downloadsView);
+  }
+  //>>AceFox
+
   #subscribeEvent(event) {
     switch (event) {
       case "browsingContext.contextCreated":
@@ -2235,6 +2580,15 @@ class BrowsingContextModule extends RootBiDiModule {
         this.#subscribedEvents.add(event);
         break;
       }
+        //<<AceFox
+      case "browsingContext.downloadStarted":
+      case "browsingContext.downloadUpdated":
+      case "browsingContext.downloadFinished":
+      case "browsingContext.downloadRemoved":{
+        this.#startListenDownloads();
+        break;
+      }
+        //>>AceFox
     }
   }
 
@@ -2258,6 +2612,15 @@ class BrowsingContextModule extends RootBiDiModule {
         this.#stopListeningToPromptEvent(event);
         break;
       }
+      //<<AceFox
+      case "browsingContext.downloadStarted":
+      case "browsingContext.downloadUpdated":
+      case "browsingContext.downloadFinished":
+      case "browsingContext.downloadRemoved":{
+        //Do nonthing:
+        break;
+      }
+      //>>AceFox
     }
   }
 
@@ -2399,6 +2762,13 @@ class BrowsingContextModule extends RootBiDiModule {
       "browsingContext.navigationStarted",
       "browsingContext.userPromptClosed",
       "browsingContext.userPromptOpened",
+
+      //>>AceFox
+      "browsingContext.downloadStarted",
+      "browsingContext.downloadUpdated",
+      "browsingContext.downloadFinished",
+      "browsingContext.downloadRemoved",
+      //<<AceFox
     ];
   }
 }

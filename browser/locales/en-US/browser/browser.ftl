@@ -56,20 +56,20 @@ browser-main-window-titles =
 #  $content-title (String): the title of the web content.
 #  $profile-name (String): the name of the current profile.
 browser-main-window-titles-mac =
-  .data-title-default = { -brand-full-name }
-  .data-title-private = { -brand-full-name } — Private Browsing
+  .data-title-default = AI2Apps
+  .data-title-private = AI2Apps — Private Browsing
   .data-title-default-with-profile = { $profile-name } — { -brand-full-name }
   .data-title-private-with-profile = { $profile-name } — { -brand-full-name } Private Browsing
-  .data-content-title-default = { $content-title }
-  .data-content-title-private = { $content-title } — Private Browsing
-  .data-content-title-default-with-profile = { $content-title } — { $profile-name }
-  .data-content-title-private-with-profile = { $content-title } — { $profile-name } — Private Browsing
+  .data-content-title-default = { $content-title } — AI2Apps
+  .data-content-title-private = { $content-title } — AI2Apps — Private Browsing
+  .data-content-title-default-with-profile = { $content-title } — { $profile-name } — AI2Apps
+  .data-content-title-private-with-profile = { $content-title } — { $profile-name } — AI2Apps — Private Browsing
 
 # This gets set as the initial title, and is overridden as soon as we start
 # updating the titlebar based on loaded tabs or private browsing state.
 # This should match the `data-title-default` attribute in both
 # `browser-main-window` and `browser-main-window-mac`.
-browser-main-window-default-title = { -brand-full-name }
+browser-main-window-default-title = AI2Apps
 
 # The non-variable portion of this MUST match the translation of
 # "PRIVATE_BROWSING_SHORTCUT_TITLE" in custom.properties

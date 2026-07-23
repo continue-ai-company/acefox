@@ -1,0 +1,2 @@
+DIST_SUBDIR = ""
+FINAL_TARGET_FILES.distribution += ["policies.json"]

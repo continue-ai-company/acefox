@@ -80,6 +80,10 @@ class BrowserModule extends RootBiDiModule {
   constructor(messageHandler) {
     super(messageHandler);
 
+    //>>AceFox:
+    Cu.printStderr(`browser.sys.mjs: BrowserModule initedd.\n`);
+    //<<AceFox:
+
     this.#proxyManager = new lazy.ProxyPerUserContextManager();
 
     // A set of internal user context ids to keep track of user contexts

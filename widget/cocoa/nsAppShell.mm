@@ -363,6 +363,7 @@ nsresult nsAppShell::Init() {
 
   char* mozAppNoDock = PR_GetEnv("MOZ_APP_NO_DOCK");
   if (mozAppNoDock && strcmp(mozAppNoDock, "") != 0) {
+    NSLog(@"[DEBUG] MOZ_APP_NO_DOCK detected, hiding dock icon");
     [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
   }
 

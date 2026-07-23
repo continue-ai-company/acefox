@@ -101,6 +101,22 @@ export interface Commands {
     params: Bidi.BrowsingContext.TraverseHistoryParameters;
     returnType: Bidi.EmptyResult;
   };
+  'browsingContext.moveBrowserWindow': {
+    params: Bidi.BrowsingContext.MoveBrowserWindowParameters;
+    returnType: Bidi.EmptyResult;
+  };
+  'browsingContext.hideBrowserWindow': {
+    params: Bidi.BrowsingContext.HideBrowserWindowParameters;
+    returnType: Bidi.EmptyResult;
+  };
+  'browsingContext.unhideBrowserWindow': {
+    params: Bidi.BrowsingContext.UnhideBrowserWindowParameters;
+    returnType: Bidi.EmptyResult;
+  };
+  'browsingContext.readArticle': {
+    params: Bidi.BrowsingContext.ReadArticleParameters;
+    returnType: Bidi.EmptyResult;
+  };
 
   'input.performActions': {
     params: Bidi.Input.PerformActionsParameters;

@@ -99,12 +99,15 @@ var NonBrowserWindow = {
 
       dockMenuElement.addEventListener("command", this);
 
-      // Hide menuitems that don't apply to private contexts.
-      if (PrivateBrowsingUtils.permanentPrivateBrowsing) {
-        document.getElementById("macDockMenuNewWindow").hidden = true;
+      // Dock menu items are permanently disabled in acefox build.
+      // Keep them visible but grayed out via the disabled attribute.
+      let newWin = document.getElementById("macDockMenuNewWindow");
+      let newPriv = document.getElementById("macDockMenuNewPrivateWindow");
+      if (newWin) {
+        newWin.setAttribute("disabled", "true");
       }
-      if (!PrivateBrowsingUtils.enabled) {
-        document.getElementById("macDockMenuNewPrivateWindow").hidden = true;
+      if (newPriv) {
+        newPriv.setAttribute("disabled", "true");
       }
       if (BrowserUIUtils.quitShortcutDisabled) {
         document.getElementById("key_quitApplication").remove();

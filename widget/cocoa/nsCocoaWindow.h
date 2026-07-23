@@ -433,6 +433,7 @@ class nsCocoaWindow final : public nsBaseWidget {
   void SetShowsToolbarButton(bool aShow) override;
   bool GetSupportsNativeFullscreen();
   void SetSupportsNativeFullscreen(bool aShow) override;
+  bool IsPrimaryWindow() const { return mIsPrimaryWindow; }
   void SetWindowAnimationType(WindowAnimationType aType) override;
   void SetDrawsTitle(bool aDrawTitle) override;
   void SetCustomTitlebar(bool) override;
@@ -636,6 +637,7 @@ class nsCocoaWindow final : public nsBaseWidget {
   bool mAlwaysOnTop = false;
   bool mAspectRatioLocked = false;
   bool mIsAlert = false;  // True if this is an non-native alert window.
+  bool mIsPrimaryWindow = false;
   bool mWasShown = false;
 
   int32_t mNumModalDescendants = 0;

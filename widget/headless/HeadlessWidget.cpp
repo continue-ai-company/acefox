@@ -203,7 +203,7 @@ bool HeadlessWidget::IsEnabled() const { return mEnabled; }
 
 void HeadlessWidget::Move(double aX, double aY) {
   LOG(("HeadlessWidget::Move [%p] %f %f\n", (void*)this, aX, aY));
-
+  printf_stderr("HeadlessWidget::Move [%f,%f]\n", aX, aY);
   double scale =
       BoundsUseDesktopPixels() ? GetDesktopToDeviceScale().scale : 1.0;
   int32_t x = NSToIntRound(aX * scale);

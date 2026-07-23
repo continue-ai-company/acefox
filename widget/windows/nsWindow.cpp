@@ -1810,6 +1810,7 @@ const SizeConstraints nsWindow::GetSizeConstraints() {
 
 // Move this component
 void nsWindow::Move(double aX, double aY) {
+  printf_stderr("nsWindow::Move1 [%f,%f]\n", aX, aY);
   if (mWindowType == WindowType::TopLevel ||
       mWindowType == WindowType::Dialog) {
     SetSizeMode(nsSizeMode_Normal);
@@ -1972,6 +1973,7 @@ void nsWindow::Resize(double aX, double aY, double aWidth, double aHeight,
                       bool aRepaint) {
   // for top-level windows only, convert coordinates from desktop pixels
   // (the "parent" coordinate space) to the window's device pixel space
+  printf_stderr("nsWindow::Resize2 [%f,%f] -> [%f x %f] repaint %d\n", aX, aY, aWidth,aHeight, aRepaint);
   double scale =
       BoundsUseDesktopPixels() ? GetDesktopToDeviceScale().scale : 1.0;
   int32_t x = NSToIntRound(aX * scale);

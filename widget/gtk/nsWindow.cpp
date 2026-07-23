@@ -1146,6 +1146,7 @@ void nsWindow::Resize(double aX, double aY, double aWidth, double aHeight,
                       bool aRepaint) {
   LOG("nsWindow::Resize [%f,%f] -> [%f x %f] repaint %d\n", aX, aY, aWidth,
       aHeight, aRepaint);
+  printf_stderr("nsWindow::Resize [%f,%f] -> [%f x %f] repaint %d\n", aX, aY, aWidth,aHeight, aRepaint);
 
   double scale =
       BoundsUseDesktopPixels() ? GetDesktopToDeviceScale().scale : 1.0;
@@ -1160,6 +1161,7 @@ void nsWindow::Enable(bool aState) { mEnabled = aState; }
 bool nsWindow::IsEnabled() const { return mEnabled; }
 
 void nsWindow::Move(double aX, double aY) {
+  printf_stderr("nsWindow::Move1 [%f,%f]\n", aX, aY);
   double scale =
       BoundsUseDesktopPixels() ? GetDesktopToDeviceScale().scale : 1.0;
   const LayoutDeviceIntPoint request(NSToIntRound(aX * scale),
