@@ -1,0 +1,60 @@
+name: AceFox build validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Native target to build
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - macos-arm64
+          - linux-arm64
+          - windows-x64
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    if: inputs.target == 'all' || inputs.target == matrix.target
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: macos-arm64
+            runner_labels: '["self-hosted", "acefox", "macos", "arm64"]'
+          - target: linux-arm64
+            runner_labels: '["self-hosted", "acefox", "linux", "arm64"]'
+          - target: windows-x64
+            runner_labels: '["self-hosted", "acefox", "windows", "x64"]'
+    runs-on: ${{ fromJSON(matrix.runner_labels) }}
+    timeout-minutes: 360
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Report native build host
+        shell: bash
+        run: |
+          ./mach --help >/dev/null
+          df -h .
+
+      - name: Build and package
+        shell: bash
+        run: |
+          ./mach build
+          ./mach package
+
+      - name: Upload unsigned build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: acefox-${{ matrix.target }}
+          path: obj-*/dist/**
+          if-no-files-found: error
+          retention-days: 7
