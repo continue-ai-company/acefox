@@ -79,11 +79,7 @@ jobs:
               tag_name = $env:RELEASE_TAG
               target_commitish = $env:GITHUB_SHA
               name = $env:RELEASE_NAME
-              body = @"
-          Unsigned Windows x64 proof-of-concept produced by GitHub Actions Run $env:SOURCE_RUN_ID.
-
-          This draft is for internal validation only. It is not code-signed and must not be treated as a production release.
-"@
+              body = "Unsigned Windows x64 proof-of-concept produced by GitHub Actions Run $env:SOURCE_RUN_ID.`n`nThis draft is for internal validation only. It is not code-signed and must not be treated as a production release."
               draft = $true
               prerelease = $true
             } | ConvertTo-Json
