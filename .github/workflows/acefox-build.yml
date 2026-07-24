@@ -80,23 +80,72 @@ jobs:
     runs-on: [self-hosted, acefox, native-build, windows, x64]
     timeout-minutes: 360
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-      - name: Report native build host
-        shell: bash
+      - name: Verify reusable Windows workspace
+        shell: powershell
         run: |
-          ./mach --help >/dev/null
-          df -h .
-      - name: Build and package
-        shell: bash
+          $source = 'D:\Workspace\continueAI\acefox'
+          if (-not (Test-Path -LiteralPath "$source\mach")) {
+            throw "Reusable source workspace not found: $source"
+          }
+          Set-Location -LiteralPath $source
+          $localCommit = (git rev-parse HEAD).Trim()
+          if ($localCommit -ne $env:GITHUB_SHA) {
+            throw "Reusable workspace is at $localCommit, expected $env:GITHUB_SHA"
+          }
+          & 'C:\mozilla-build\python3\python.exe' '.\mach' '--help' | Out-Null
+          Get-PSDrive -Name C,D | Format-Table -AutoSize
+
+      - name: Incremental build and package
+        shell: powershell
         run: |
-          ./mach build
-          ./mach package
+          Get-ChildItem Env: |
+            Where-Object Name -Like 'CONDA*' |
+            Remove-Item
+          $env:Path = (($env:Path -split ';') |
+            Where-Object { $_ -and $_ -notmatch '(?i)(miniconda|anaconda|conda)' }) -join ';'
+          $env:MACH_HIDE_DEV_DRIVE_SUGGESTION = '1'
+          Set-Location -LiteralPath 'D:\Workspace\continueAI\acefox'
+          & 'C:\mozilla-build\python3\python.exe' '.\mach' 'build'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & 'C:\mozilla-build\python3\python.exe' '.\mach' 'package'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Smoke test and stage artifacts
+        shell: powershell
+        run: |
+          $source = 'D:\Workspace\continueAI\acefox'
+          $dist = "$source\obj-x86_64-pc-windows-msvc\dist"
+          $output = Join-Path $env:GITHUB_WORKSPACE 'release-output'
+          New-Item -ItemType Directory -Path $output -Force | Out-Null
+          $profile = Join-Path $env:RUNNER_TEMP 'acefox-smoke-profile'
+          $screenshot = Join-Path $env:RUNNER_TEMP 'acefox-smoke.png'
+          New-Item -ItemType Directory -Path $profile -Force | Out-Null
+          $process = Start-Process -FilePath "$dist\bin\firefox.exe" `
+            -ArgumentList @('--headless', '--no-remote', '--profile', $profile, '--screenshot', $screenshot, 'about:blank') `
+            -PassThru -WindowStyle Hidden
+          if (-not $process.WaitForExit(60000)) {
+            Stop-Process -Id $process.Id -Force
+            throw 'Smoke test timed out after 60 seconds'
+          }
+          if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $screenshot)) {
+            throw "Smoke test failed with exit code $($process.ExitCode)"
+          }
+          $artifacts = Get-ChildItem -LiteralPath $dist -File |
+            Where-Object Name -Match '\.win64\.(zip|installer\.exe)$'
+          if ($artifacts.Count -ne 2) {
+            throw "Expected portable ZIP and installer, found $($artifacts.Count)"
+          }
+          Copy-Item -LiteralPath $artifacts.FullName -Destination $output
+          $checksums = foreach ($artifact in Get-ChildItem -LiteralPath $output -File) {
+            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $artifact.FullName).Hash.ToLowerInvariant()
+            "$hash  $($artifact.Name)"
+          }
+          $checksums | Set-Content -LiteralPath (Join-Path $output 'SHA256SUMS.txt') -Encoding ascii
+
       - name: Upload unsigned build output
         uses: actions/upload-artifact@v4
         with:
           name: acefox-windows-x64
-          path: obj-*/dist/**
+          path: release-output/*
           if-no-files-found: error
           retention-days: 7
