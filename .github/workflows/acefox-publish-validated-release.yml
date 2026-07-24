@@ -8,7 +8,6 @@ on:
       - .github/workflows/acefox-publish-validated-release.yml
 
 permissions:
-  actions: read
   contents: write
 
 jobs:
@@ -24,21 +23,12 @@ jobs:
       RELEASE_NAME: AceFox 143.0a1 AI2Apps Runtime 1 (Linux ARM64)
 
     steps:
-      - name: Download validated Run 2 assets
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Locate validated Run 2 assets
         shell: bash
         run: |
           set -euo pipefail
-          api_accept="Accept: application/vnd.github+json"
-          api_version="X-GitHub-Api-Version: 2022-11-28"
-          auth_header="Authorization: Bearer $GH_TOKEN"
-          assets_dir="$RUNNER_TEMP/release-assets"
-          rm -rf -- "$assets_dir"
-          mkdir -p "$assets_dir"
-
-          curl --fail-with-body --location --silent --show-error --retry 3             -H "$api_accept" -H "$api_version" -H "$auth_header"             "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"             -o "$RUNNER_TEMP/release-assets.zip"
-          unzip -q "$RUNNER_TEMP/release-assets.zip" -d "$assets_dir"
+          assets_dir="$GITHUB_WORKSPACE/obj-linux-arm64-release/release"
+          test -d "$assets_dir"
           ls -lh "$assets_dir"
           echo "ASSETS_DIR=$assets_dir" >> "$GITHUB_ENV"
 
