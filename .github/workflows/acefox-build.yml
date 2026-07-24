@@ -13,6 +13,11 @@ on:
           - macos-arm64
           - linux-arm64
           - windows-x64
+      reuse_packaged_windows:
+        description: Reuse the validated Windows package already present on the runner
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -96,6 +101,7 @@ jobs:
           Get-PSDrive -Name C,D | Format-Table -AutoSize
 
       - name: Incremental build and package
+        if: ${{ !inputs.reuse_packaged_windows }}
         shell: powershell -NoProfile -command ". '{0}'"
         run: |
           Get-ChildItem Env: |
