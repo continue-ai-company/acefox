@@ -144,8 +144,30 @@ jobs:
             exit 1
           fi
 
+          encoded_tag="$(jq -rn --arg tag "$RELEASE_TAG" '$tag | @uri')"
+          tag_status="$(curl --silent --show-error             -o "$RUNNER_TEMP/tag-response.json" --write-out '%{http_code}'             -H "$api_accept" -H "$api_version" -H "$auth_header"             "$api_root/git/ref/tags/$encoded_tag")"
+          case "$tag_status" in
+            200)
+              existing_tag_sha="$(jq -er '.object.sha' "$RUNNER_TEMP/tag-response.json")"
+              [[ "$existing_tag_sha" == "$GITHUB_SHA" ]] || {
+                echo "Tag $RELEASE_TAG already points to $existing_tag_sha" >&2
+                exit 1
+              }
+              ;;
+            404)
+              jq -n --arg tag "$RELEASE_TAG" --arg sha "$GITHUB_SHA"                 '{ref: ("refs/tags/" + $tag), sha: $sha}'                 > "$RUNNER_TEMP/create-tag.json"
+              curl --fail-with-body --silent --show-error                 -X POST -H "$api_accept" -H "$api_version" -H "$auth_header"                 -H "Content-Type: application/json"                 --data-binary @"$RUNNER_TEMP/create-tag.json"                 "$api_root/git/refs"                 -o "$RUNNER_TEMP/created-tag.json"
+              jq -e '.ref == ("refs/tags/" + env.RELEASE_TAG)'                 "$RUNNER_TEMP/created-tag.json" >/dev/null
+              ;;
+            *)
+              cat "$RUNNER_TEMP/tag-response.json" >&2
+              echo "Unable to inspect release tag (HTTP $tag_status)" >&2
+              exit 1
+              ;;
+          esac
+
           release_body="$(cat "$RUNNER_TEMP/acefox-release-notes.md")"
-          jq -n             --arg tag "$RELEASE_TAG"             --arg target "$GITHUB_SHA"             --arg name "$RELEASE_NAME"             --arg body "$release_body"             --argjson prerelease "$RELEASE_PRERELEASE"             '{tag_name: $tag, target_commitish: $target, name: $name, body: $body, draft: true, prerelease: $prerelease}'             > "$RUNNER_TEMP/create-release.json"
+          jq -n             --arg tag "$RELEASE_TAG"             --arg name "$RELEASE_NAME"             --arg body "$release_body"             --argjson prerelease "$RELEASE_PRERELEASE"             '{tag_name: $tag, name: $name, body: $body, draft: true, prerelease: $prerelease}'             > "$RUNNER_TEMP/create-release.json"
 
           curl --fail-with-body --silent --show-error             -X POST -H "$api_accept" -H "$api_version" -H "$auth_header"             -H "Content-Type: application/json"             --data-binary @"$RUNNER_TEMP/create-release.json"             "$api_root/releases"             -o "$RUNNER_TEMP/release-response.json"
 
