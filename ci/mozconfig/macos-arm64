@@ -1,0 +1,7 @@
+# Use the locally installed Xcode toolchain. AceFox 143 is pinned to a
+# historical Mozilla revision whose bootstrap clang artifact is no longer
+# available from Taskcluster.
+ac_add_options --disable-bootstrap
+
+# Keep native macOS ARM64 build output separate and predictable.
+mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-macos-arm64
