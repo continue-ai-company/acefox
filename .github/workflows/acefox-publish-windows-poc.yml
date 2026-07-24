@@ -120,7 +120,7 @@ jobs:
               '-H', "Authorization: Bearer $env:GH_TOKEN",
               '-H', "Content-Type: $contentType",
               '--data-binary', "@$($asset.FullName)",
-              "$uploadUrl?name=$encodedName"
+              "${uploadUrl}?name=$encodedName"
             )
             & curl.exe @curlArguments
             if ($LASTEXITCODE -ne 0) {
