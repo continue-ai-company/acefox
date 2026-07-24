@@ -1,0 +1,6 @@
+# Native Ubuntu ARM64 POC configuration.
+# The Firefox 143 bootstrap toolchain artifacts are no longer available,
+# so this runner uses the system Clang, Rust, and WASI toolchains.
+ac_add_options --disable-bootstrap
+
+mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-linux-arm64
