@@ -28,20 +28,36 @@ jobs:
     if: inputs.target == 'all' || inputs.target == 'macos-arm64'
     runs-on: [self-hosted, acefox, native-build, macos, arm64]
     timeout-minutes: 360
+    env:
+      MOZCONFIG: ci/mozconfig/macos-arm64
+      PYTHON_CMD: /opt/homebrew/bin/python3.12
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
+      - name: Configure macOS native toolchain
+        shell: bash
+        run: |
+          {
+            echo '/opt/homebrew/opt/lld/bin'
+            echo '/opt/homebrew/opt/llvm/bin'
+            echo '/Users/agenthub/.cargo/bin'
+          } >> "$GITHUB_PATH"
+          {
+            echo 'WASM_CC=/opt/homebrew/opt/llvm/bin/clang -Wno-deprecated'
+            echo 'WASM_CXX=/opt/homebrew/opt/llvm/bin/clang++ -Wno-deprecated'
+            echo 'WASI_SYSROOT=/opt/homebrew/share/wasi-sysroot'
+          } >> "$GITHUB_ENV"
       - name: Report native build host
         shell: bash
         run: |
-          ./mach --help >/dev/null
+          "$PYTHON_CMD" ./mach --help >/dev/null
           df -h .
       - name: Build and package
         shell: bash
         run: |
-          ./mach build
-          ./mach package
+          "$PYTHON_CMD" ./mach build
+          "$PYTHON_CMD" ./mach package
       - name: Upload unsigned build output
         uses: actions/upload-artifact@v4
         with:
