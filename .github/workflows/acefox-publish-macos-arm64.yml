@@ -1,0 +1,185 @@
+name: AceFox macOS ARM64 release assets
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Successful AceFox build workflow run ID
+        required: true
+        type: string
+      release_tag:
+        description: Existing multi-platform pre-release tag
+        required: true
+        default: acefox-v143.0a1-ai2apps.1
+        type: string
+      release_version:
+        description: AceFox version used in asset names
+        required: true
+        default: 143.0a1
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: acefox-macos-arm64-release
+  cancel-in-progress: false
+
+jobs:
+  publish-macos-arm64:
+    name: Attach unsigned macOS ARM64 runtime
+    runs-on: [self-hosted, acefox, native-build, macos, arm64]
+    timeout-minutes: 60
+    env:
+      SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      RELEASE_VERSION: ${{ inputs.release_version }}
+
+    steps:
+      - name: Check out release tooling
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Validate source build run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]] || {
+            echo "Invalid source run ID: $SOURCE_RUN_ID" >&2
+            exit 1
+          }
+          [[ "$RELEASE_TAG" =~ ^acefox-v[0-9A-Za-z._-]+$ ]] || {
+            echo "Invalid release tag: $RELEASE_TAG" >&2
+            exit 1
+          }
+          [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+[0-9A-Za-z.]*$ ]] || {
+            echo "Invalid release version: $RELEASE_VERSION" >&2
+            exit 1
+          }
+
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" \
+            > "$RUNNER_TEMP/source-run.json"
+          jq -e '
+            .conclusion == "success" and
+            .event == "workflow_dispatch" and
+            .head_branch == "acefox/143" and
+            .path == ".github/workflows/acefox-build.yml"
+          ' "$RUNNER_TEMP/source-run.json" >/dev/null
+          source_sha="$(jq -er '.head_sha' "$RUNNER_TEMP/source-run.json")"
+          echo "SOURCE_SHA=$source_sha" >> "$GITHUB_ENV"
+
+      - name: Download validated macOS build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: acefox-macos-arm64
+          path: ${{ runner.temp }}/acefox-macos-build
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.source_run_id }}
+
+      - name: Create macOS DMG and portable app ZIP assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash ci/release/package-macos-arm64.sh \
+            "$RELEASE_VERSION" \
+            "$RELEASE_TAG" \
+            "$SOURCE_SHA" \
+            "$SOURCE_RUN_ID" \
+            "$RUNNER_TEMP/acefox-macos-build" \
+            "$RUNNER_TEMP/acefox-macos-release-assets"
+
+      - name: Verify macOS release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          assets="$RUNNER_TEMP/acefox-macos-release-assets"
+          (
+            cd "$assets"
+            shasum -a 256 -c SHA256SUMS-macos-arm64.txt
+          )
+          jq -e \
+            '.target == "macos-arm64" and
+             .signing.required == false and
+             .signing.status == "unsigned" and
+             (.artifacts | length) == 2' \
+            "$assets/runtime-manifest-macos-arm64.json"
+          test -s "$assets/AceFox-${RELEASE_VERSION}-macos-arm64.dmg"
+          test -s "$assets/AceFox-${RELEASE_VERSION}-macos-arm64.app.zip"
+
+      - name: Preserve macOS release assets as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: acefox-macos-arm64-release-assets
+          path: ${{ runner.temp }}/acefox-macos-release-assets/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      - name: Attach assets to existing multi-platform pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          api_root="https://api.github.com/repos/$GITHUB_REPOSITORY"
+          api_accept="Accept: application/vnd.github+json"
+          api_version="X-GitHub-Api-Version: 2022-11-28"
+          auth_header="Authorization: Bearer $GH_TOKEN"
+          assets_dir="$RUNNER_TEMP/acefox-macos-release-assets"
+
+          encoded_tag="$(jq -rn --arg tag "$RELEASE_TAG" '$tag | @uri')"
+          curl --fail-with-body --silent --show-error \
+            -H "$api_accept" -H "$api_version" -H "$auth_header" \
+            "$api_root/releases/tags/$encoded_tag" \
+            -o "$RUNNER_TEMP/existing-release.json"
+          jq -e '.draft == false and .prerelease == true' \
+            "$RUNNER_TEMP/existing-release.json" >/dev/null
+          release_url="$(jq -er '.html_url' "$RUNNER_TEMP/existing-release.json")"
+          upload_url="$(jq -er '.upload_url | sub("\\{.*"; "")' \
+            "$RUNNER_TEMP/existing-release.json")"
+
+          for asset in "$assets_dir"/*; do
+            asset_name="$(basename "$asset")"
+            asset_sha256="$(shasum -a 256 "$asset" | awk '{print $1}')"
+            existing_digest="$(jq -r --arg name "$asset_name" \
+              '.assets[] | select(.name == $name) | .digest // empty' \
+              "$RUNNER_TEMP/existing-release.json")"
+            if [[ -n "$existing_digest" ]]; then
+              [[ "$existing_digest" == "sha256:$asset_sha256" ]] || {
+                echo "Existing release asset differs: $asset_name" >&2
+                exit 1
+              }
+              echo "Release asset already matches: $asset_name"
+              continue
+            fi
+
+            encoded_name="$(jq -rn --arg name "$asset_name" '$name | @uri')"
+            case "$asset_name" in
+              *.dmg) content_type="application/x-apple-diskimage" ;;
+              *.zip) content_type="application/zip" ;;
+              *.json) content_type="application/json" ;;
+              *) content_type="text/plain" ;;
+            esac
+            echo "Uploading $asset_name"
+            curl --fail-with-body --silent --show-error --retry 3 \
+              -X POST -H "$api_accept" -H "$api_version" -H "$auth_header" \
+              -H "Content-Type: $content_type" \
+              --data-binary @"$asset" \
+              "$upload_url?name=$encoded_name" \
+              -o "$RUNNER_TEMP/upload-response.json"
+            jq -e '.state == "uploaded"' \
+              "$RUNNER_TEMP/upload-response.json" >/dev/null
+          done
+
+          {
+            echo "### macOS ARM64 assets attached"
+            echo
+            echo "- Source build run: $SOURCE_RUN_ID"
+            echo "- Source commit: \`$SOURCE_SHA\`"
+            echo "- Release: $release_url"
+          } >> "$GITHUB_STEP_SUMMARY"
