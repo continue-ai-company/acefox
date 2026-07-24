@@ -60,7 +60,8 @@ jobs:
           jq -e --arg tag "$RELEASE_TAG"             '.tag_name == $tag and .draft == false and .prerelease == true'             "$RUNNER_TEMP/release-response.json" >/dev/null
           upload_url="$(jq -er '.upload_url | sub("\\{.*"; "")' "$RUNNER_TEMP/release-response.json")"
           uploads_ip="$(curl --fail --silent --show-error             -H 'Accept: application/dns-json'             'https://cloudflare-dns.com/dns-query?name=uploads.github.com&type=A'             | jq -er 'first(.Answer[] | select(.type == 1) | .data)')"
-          echo "Using direct uploads.github.com endpoint: $uploads_ip"
+          upload_source_ip="$(ip -j -4 route show default | jq -er '.[0].prefsrc')"
+          echo "Using direct uploads.github.com endpoint: $uploads_ip from $upload_source_ip"
 
           for asset in "$ASSETS_DIR"/*; do
             asset_name="$(basename "$asset")"
@@ -83,7 +84,7 @@ jobs:
               *) content_type="text/plain" ;;
             esac
             echo "Uploading $asset_name"
-            curl --fail-with-body --silent --show-error --retry 3 --resolve "uploads.github.com:443:$uploads_ip"               -X POST -H "$api_accept" -H "$api_version" -H "$auth_header"               -H "Content-Type: $content_type"               --data-binary @"$asset"               "$upload_url?name=$encoded_name"               -o "$RUNNER_TEMP/upload-response.json"
+            curl --fail-with-body --silent --show-error --retry 3 --interface "$upload_source_ip" --resolve "uploads.github.com:443:$uploads_ip"               -X POST -H "$api_accept" -H "$api_version" -H "$auth_header"               -H "Content-Type: $content_type"               --data-binary @"$asset"               "$upload_url?name=$encoded_name"               -o "$RUNNER_TEMP/upload-response.json"
             jq -e '.state == "uploaded"' "$RUNNER_TEMP/upload-response.json" >/dev/null
           done
 
