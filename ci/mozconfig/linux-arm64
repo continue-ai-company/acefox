@@ -3,4 +3,8 @@
 # so this runner uses the system Clang, Rust, and WASI toolchains.
 ac_add_options --disable-bootstrap
 
+# Ubuntu 24.04 WASI libc++ is incompatible with Firefox 143 RLBox linking,
+# so use the supported opt-out for this unsigned POC build.
+ac_add_options --without-wasm-sandboxed-libraries
+
 mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-linux-arm64
