@@ -14,7 +14,7 @@ permissions:
 jobs:
   publish-windows-poc:
     name: Publish unsigned Windows POC draft
-    runs-on: [self-hosted, acefox, desktop-release, windows, x64]
+    runs-on: [self-hosted, acefox, native-build, windows, x64]
     timeout-minutes: 45
     env:
       SOURCE_RUN_ID: "30083854947"
