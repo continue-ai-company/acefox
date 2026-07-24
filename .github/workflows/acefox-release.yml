@@ -18,6 +18,13 @@ on:
         required: true
         default: true
         type: boolean
+  # Bootstrap trigger for the first branch release. Remove after the run queues.
+  push:
+    branches:
+      - acefox/143
+    paths:
+      - .github/workflows/acefox-release.yml
+
 permissions:
   contents: write
 
@@ -39,7 +46,7 @@ jobs:
       - name: Check out release commit
         uses: actions/checkout@v5
         with:
-          fetch-depth: 0
+          fetch-depth: 1
 
       - name: Resolve release metadata
         env:
