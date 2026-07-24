@@ -22,13 +22,19 @@ jobs:
       RELEASE_NAME: AceFox 143.0a1 Windows x64 unsigned POC
 
     steps:
-      - name: Download validated Windows artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: acefox-windows-x64
-          path: release-assets
-          github-token: ${{ github.token }}
-          run-id: ${{ env.SOURCE_RUN_ID }}
+      - name: Stage validated Windows assets from native build host
+        shell: powershell -NoProfile -command ". '{0}'"
+        run: |
+          $dist = 'D:\Workspace\continueAI\acefox\obj-x86_64-pc-windows-msvc\dist'
+          $assets = Join-Path $env:GITHUB_WORKSPACE 'release-assets'
+          New-Item -ItemType Directory -Path $assets -Force | Out-Null
+          $packages = Get-ChildItem -LiteralPath $dist -File |
+            Where-Object Name -Match '\.win64\.(zip|installer\.exe)$'
+          if ($packages.Count -ne 2) {
+            throw "Expected portable ZIP and installer, found $($packages.Count)"
+          }
+          Copy-Item -LiteralPath $packages.FullName -Destination $assets -Force
+          Copy-Item -LiteralPath (Join-Path $dist 'SHA256SUMS.txt') -Destination $assets -Force
 
       - name: Verify Windows assets
         shell: powershell -NoProfile -command ". '{0}'"
