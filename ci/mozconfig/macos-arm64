@@ -3,5 +3,10 @@
 # available from Taskcluster.
 ac_add_options --disable-bootstrap
 
+# The Firefox 143 macOS crash reporter client contains a Cocoa binding
+# workaround that is incompatible with the Xcode 16.4 libclang signatures.
+# It is not required for the unsigned AI2Apps runtime POC.
+ac_add_options --disable-crashreporter
+
 # Keep native macOS ARM64 build output separate and predictable.
 mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-macos-arm64
