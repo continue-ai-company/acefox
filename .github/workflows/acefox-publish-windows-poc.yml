@@ -34,7 +34,11 @@ jobs:
             throw "Expected portable ZIP and installer, found $($packages.Count)"
           }
           Copy-Item -LiteralPath $packages.FullName -Destination $assets -Force
-          Copy-Item -LiteralPath (Join-Path $dist 'SHA256SUMS.txt') -Destination $assets -Force
+          $checksums = foreach ($package in Get-ChildItem -LiteralPath $assets -File) {
+            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $package.FullName).Hash.ToLowerInvariant()
+            "$hash  $($package.Name)"
+          }
+          $checksums | Set-Content -LiteralPath (Join-Path $assets 'SHA256SUMS.txt') -Encoding ascii
 
       - name: Verify Windows assets
         shell: powershell -NoProfile -command ". '{0}'"
