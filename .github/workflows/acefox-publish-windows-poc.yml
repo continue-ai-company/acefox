@@ -1,0 +1,124 @@
+name: AceFox Windows x64 POC release
+
+on:
+  push:
+    branches:
+      - acefox/143
+    paths:
+      - .github/workflows/acefox-publish-windows-poc.yml
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish-windows-poc:
+    name: Publish unsigned Windows POC draft
+    runs-on: [self-hosted, acefox, desktop-release, windows, x64]
+    timeout-minutes: 45
+    env:
+      SOURCE_RUN_ID: "30083854947"
+      RELEASE_TAG: acefox-v143.0a1-windows-poc.1
+      RELEASE_NAME: AceFox 143.0a1 Windows x64 unsigned POC
+
+    steps:
+      - name: Download validated Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: acefox-windows-x64
+          path: release-assets
+          github-token: ${{ github.token }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+
+      - name: Verify Windows assets
+        shell: powershell -NoProfile -command ". '{0}'"
+        run: |
+          $assets = Join-Path $env:GITHUB_WORKSPACE 'release-assets'
+          $checksumFile = Join-Path $assets 'SHA256SUMS.txt'
+          if (-not (Test-Path -LiteralPath $checksumFile)) {
+            throw 'SHA256SUMS.txt is missing'
+          }
+          $expected = @{}
+          foreach ($line in Get-Content -LiteralPath $checksumFile) {
+            if ($line -notmatch '^([0-9a-f]{64})  (.+)$') {
+              throw "Invalid checksum line: $line"
+            }
+            $expected[$matches[2]] = $matches[1]
+          }
+          $packages = Get-ChildItem -LiteralPath $assets -File |
+            Where-Object Name -Match '\.win64\.(zip|installer\.exe)$'
+          if ($packages.Count -ne 2) {
+            throw "Expected portable ZIP and installer, found $($packages.Count)"
+          }
+          foreach ($package in $packages) {
+            $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $package.FullName).Hash.ToLowerInvariant()
+            if ($expected[$package.Name] -ne $actual) {
+              throw "Checksum mismatch: $($package.Name)"
+            }
+          }
+
+      - name: Create draft pre-release and upload assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell -NoProfile -command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = 'application/vnd.github+json'
+            'X-GitHub-Api-Version' = '2022-11-28'
+          }
+          $apiRoot = "https://api.github.com/repos/$env:GITHUB_REPOSITORY"
+          $releases = Invoke-RestMethod -Headers $headers -Uri "$apiRoot/releases?per_page=100"
+          $release = $releases | Where-Object tag_name -EQ $env:RELEASE_TAG | Select-Object -First 1
+          if ($release -and -not $release.draft) {
+            throw "Release tag already exists and is not a draft: $env:RELEASE_TAG"
+          }
+          if (-not $release) {
+            $payload = @{
+              tag_name = $env:RELEASE_TAG
+              target_commitish = $env:GITHUB_SHA
+              name = $env:RELEASE_NAME
+              body = @"
+          Unsigned Windows x64 proof-of-concept produced by GitHub Actions Run $env:SOURCE_RUN_ID.
+
+          This draft is for internal validation only. It is not code-signed and must not be treated as a production release.
+"@
+              draft = $true
+              prerelease = $true
+            } | ConvertTo-Json
+            $release = Invoke-RestMethod -Method Post -Headers $headers `
+              -Uri "$apiRoot/releases" -ContentType 'application/json' -Body $payload
+          }
+          $uploadUrl = $release.upload_url -replace '\{.*$', ''
+          $assetsDir = Join-Path $env:GITHUB_WORKSPACE 'release-assets'
+          foreach ($asset in Get-ChildItem -LiteralPath $assetsDir -File) {
+            $existing = $release.assets | Where-Object name -EQ $asset.Name | Select-Object -First 1
+            if ($existing) {
+              if ($existing.size -ne $asset.Length) {
+                throw "Existing release asset has the wrong size: $($asset.Name)"
+              }
+              continue
+            }
+            $encodedName = [uri]::EscapeDataString($asset.Name)
+            $contentType = switch -Regex ($asset.Name) {
+              '\.zip$' { 'application/zip'; break }
+              '\.exe$' { 'application/vnd.microsoft.portable-executable'; break }
+              default { 'text/plain' }
+            }
+            $curlArguments = @(
+              '--fail-with-body', '--silent', '--show-error', '--retry', '3',
+              '-X', 'POST',
+              '-H', 'Accept: application/vnd.github+json',
+              '-H', 'X-GitHub-Api-Version: 2022-11-28',
+              '-H', "Authorization: Bearer $env:GH_TOKEN",
+              '-H', "Content-Type: $contentType",
+              '--data-binary', "@$($asset.FullName)",
+              "$uploadUrl?name=$encodedName"
+            )
+            & curl.exe @curlArguments
+            if ($LASTEXITCODE -ne 0) {
+              throw "Release upload failed: $($asset.Name)"
+            }
+          }
+          "Draft release: $($release.html_url)" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
