@@ -1,4 +1,4 @@
-name: AceFox Windows x64 POC release
+name: AceFox Windows x64 release assets
 
 on:
   push:
@@ -13,40 +13,49 @@ permissions:
 
 jobs:
   publish-windows-poc:
-    name: Publish unsigned Windows POC draft
+    name: Attach unsigned Windows runtime
     runs-on: [self-hosted, acefox, native-build, windows, x64]
     timeout-minutes: 45
     env:
       SOURCE_RUN_ID: "30083854947"
-      RELEASE_TAG: acefox-v143.0a1-windows-poc.1
-      RELEASE_NAME: AceFox 143.0a1 Windows x64 unsigned POC
+      RELEASE_TAG: acefox-v143.0a1-ai2apps.1
+      RELEASE_VERSION: 143.0a1
 
     steps:
       - name: Stage validated Windows assets from native build host
         shell: powershell -NoProfile -command ". '{0}'"
         run: |
           $dist = 'D:\Workspace\continueAI\acefox\obj-x86_64-pc-windows-msvc\dist'
-          $assets = Join-Path $env:GITHUB_WORKSPACE 'release-assets'
+          $assets = Join-Path $env:RUNNER_TEMP 'windows-release-assets'
+          if (Test-Path -LiteralPath $assets) {
+            Remove-Item -LiteralPath $assets -Recurse -Force
+          }
           New-Item -ItemType Directory -Path $assets -Force | Out-Null
           $packages = Get-ChildItem -LiteralPath $dist -File |
             Where-Object Name -Match '\.win64\.(zip|installer\.exe)$'
           if ($packages.Count -ne 2) {
             throw "Expected portable ZIP and installer, found $($packages.Count)"
           }
-          Copy-Item -LiteralPath $packages.FullName -Destination $assets -Force
+          $installer = $packages | Where-Object Name -Like '*.installer.exe'
+          $portable = $packages | Where-Object Name -Like '*.zip'
+          Copy-Item -LiteralPath $installer.FullName `
+            -Destination (Join-Path $assets "AceFox-$env:RELEASE_VERSION-windows-x64-setup.exe") -Force
+          Copy-Item -LiteralPath $portable.FullName `
+            -Destination (Join-Path $assets "AceFox-$env:RELEASE_VERSION-windows-x64-portable.zip") -Force
           $checksums = foreach ($package in Get-ChildItem -LiteralPath $assets -File) {
             $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $package.FullName).Hash.ToLowerInvariant()
             "$hash  $($package.Name)"
           }
-          $checksums | Set-Content -LiteralPath (Join-Path $assets 'SHA256SUMS.txt') -Encoding ascii
+          $checksums | Set-Content `
+            -LiteralPath (Join-Path $assets 'SHA256SUMS-windows-x64.txt') -Encoding ascii
 
       - name: Verify Windows assets
         shell: powershell -NoProfile -command ". '{0}'"
         run: |
-          $assets = Join-Path $env:GITHUB_WORKSPACE 'release-assets'
-          $checksumFile = Join-Path $assets 'SHA256SUMS.txt'
+          $assets = Join-Path $env:RUNNER_TEMP 'windows-release-assets'
+          $checksumFile = Join-Path $assets 'SHA256SUMS-windows-x64.txt'
           if (-not (Test-Path -LiteralPath $checksumFile)) {
-            throw 'SHA256SUMS.txt is missing'
+            throw 'SHA256SUMS-windows-x64.txt is missing'
           }
           $expected = @{}
           foreach ($line in Get-Content -LiteralPath $checksumFile) {
@@ -56,7 +65,7 @@ jobs:
             $expected[$matches[2]] = $matches[1]
           }
           $packages = Get-ChildItem -LiteralPath $assets -File |
-            Where-Object Name -Match '\.win64\.(zip|installer\.exe)$'
+            Where-Object Name -Match '^AceFox-.*-windows-x64-(portable\.zip|setup\.exe)$'
           if ($packages.Count -ne 2) {
             throw "Expected portable ZIP and installer, found $($packages.Count)"
           }
@@ -67,7 +76,7 @@ jobs:
             }
           }
 
-      - name: Create draft pre-release and upload assets
+      - name: Attach assets to existing multi-platform pre-release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: powershell -NoProfile -command ". '{0}'"
@@ -81,23 +90,14 @@ jobs:
           $apiRoot = "https://api.github.com/repos/$env:GITHUB_REPOSITORY"
           $releases = Invoke-RestMethod -Headers $headers -Uri "$apiRoot/releases?per_page=100"
           $release = $releases | Where-Object tag_name -EQ $env:RELEASE_TAG | Select-Object -First 1
-          if ($release -and -not $release.draft) {
-            throw "Release tag already exists and is not a draft: $env:RELEASE_TAG"
-          }
           if (-not $release) {
-            $payload = @{
-              tag_name = $env:RELEASE_TAG
-              target_commitish = $env:GITHUB_SHA
-              name = $env:RELEASE_NAME
-              body = "Unsigned Windows x64 proof-of-concept produced by GitHub Actions Run $env:SOURCE_RUN_ID.`n`nThis draft is for internal validation only. It is not code-signed and must not be treated as a production release."
-              draft = $true
-              prerelease = $true
-            } | ConvertTo-Json
-            $release = Invoke-RestMethod -Method Post -Headers $headers `
-              -Uri "$apiRoot/releases" -ContentType 'application/json' -Body $payload
+            throw "Existing multi-platform release was not found: $env:RELEASE_TAG"
+          }
+          if ($release.draft -or -not $release.prerelease) {
+            throw "Expected a published pre-release: $env:RELEASE_TAG"
           }
           $uploadUrl = $release.upload_url -replace '\{.*$', ''
-          $assetsDir = Join-Path $env:GITHUB_WORKSPACE 'release-assets'
+          $assetsDir = Join-Path $env:RUNNER_TEMP 'windows-release-assets'
           foreach ($asset in Get-ChildItem -LiteralPath $assetsDir -File) {
             $existing = $release.assets | Where-Object name -EQ $asset.Name | Select-Object -First 1
             if ($existing) {
@@ -127,4 +127,4 @@ jobs:
               throw "Release upload failed: $($asset.Name)"
             }
           }
-          "Draft release: $($release.html_url)" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          "Updated release: $($release.html_url)" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
