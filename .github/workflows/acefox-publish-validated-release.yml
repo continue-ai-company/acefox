@@ -1,0 +1,132 @@
+name: AceFox publish validated Linux ARM64 release
+
+on:
+  push:
+    branches:
+      - acefox/143
+    paths:
+      - .github/workflows/acefox-publish-validated-release.yml
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    name: Publish Run 2 validated assets
+    runs-on: [self-hosted, native-build, linux, arm64]
+    timeout-minutes: 30
+    env:
+      ARTIFACT_ID: "8591175415"
+      SOURCE_SHA: 27fd28b71f4f7266823743312ce50f33993362be
+      RELEASE_TAG: acefox-v143.0a1-ai2apps.1
+      RELEASE_VERSION: 143.0a1
+      RELEASE_NAME: AceFox 143.0a1 AI2Apps Runtime 1 (Linux ARM64)
+
+    steps:
+      - name: Download validated Run 2 assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          api_accept="Accept: application/vnd.github+json"
+          api_version="X-GitHub-Api-Version: 2022-11-28"
+          auth_header="Authorization: Bearer $GH_TOKEN"
+          assets_dir="$RUNNER_TEMP/release-assets"
+          rm -rf -- "$assets_dir"
+          mkdir -p "$assets_dir"
+
+          curl --fail-with-body --location --silent --show-error --retry 3             -H "$api_accept" -H "$api_version" -H "$auth_header"             "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"             -o "$RUNNER_TEMP/release-assets.zip"
+          unzip -q "$RUNNER_TEMP/release-assets.zip" -d "$assets_dir"
+          ls -lh "$assets_dir"
+          echo "ASSETS_DIR=$assets_dir" >> "$GITHUB_ENV"
+
+      - name: Verify recovered assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            cd "$ASSETS_DIR"
+            sha256sum --check SHA256SUMS
+          )
+          jq -e             --arg tag "$RELEASE_TAG"             --arg commit "$SOURCE_SHA"             --arg version "$RELEASE_VERSION"             '.tag == $tag and .commit == $commit and .version == $version and .signing.status == "unsigned"'             "$ASSETS_DIR/runtime-manifest.json"
+          test -x "$ASSETS_DIR/AceFox-${RELEASE_VERSION}-linux-arm64.AppImage"
+          test -s "$ASSETS_DIR/AceFox-${RELEASE_VERSION}-linux-arm64-portable.zip"
+
+      - name: Publish immutable tag and GitHub Pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          api_root="https://api.github.com/repos/$GITHUB_REPOSITORY"
+          api_accept="Accept: application/vnd.github+json"
+          api_version="X-GitHub-Api-Version: 2022-11-28"
+          auth_header="Authorization: Bearer $GH_TOKEN"
+
+          curl --fail --silent --show-error             -H "$api_accept" -H "$api_version" -H "$auth_header"             "$api_root/releases?per_page=100"             -o "$RUNNER_TEMP/existing-releases.json"
+          if jq -e --arg tag "$RELEASE_TAG" '.[] | select(.tag_name == $tag)'             "$RUNNER_TEMP/existing-releases.json" >/dev/null; then
+            echo "Release tag already exists and is immutable: $RELEASE_TAG" >&2
+            exit 1
+          fi
+
+          encoded_tag="$(jq -rn --arg tag "$RELEASE_TAG" '$tag | @uri')"
+          tag_status="$(curl --silent --show-error             -o "$RUNNER_TEMP/tag-response.json" --write-out '%{http_code}'             -H "$api_accept" -H "$api_version" -H "$auth_header"             "$api_root/git/ref/tags/$encoded_tag")"
+          case "$tag_status" in
+            200)
+              existing_tag_sha="$(jq -er '.object.sha' "$RUNNER_TEMP/tag-response.json")"
+              [[ "$existing_tag_sha" == "$SOURCE_SHA" ]] || {
+                echo "Tag $RELEASE_TAG already points to $existing_tag_sha" >&2
+                exit 1
+              }
+              ;;
+            404)
+              jq -n --arg tag "$RELEASE_TAG" --arg sha "$SOURCE_SHA"                 '{ref: ("refs/tags/" + $tag), sha: $sha}'                 > "$RUNNER_TEMP/create-tag.json"
+              curl --fail-with-body --silent --show-error                 -X POST -H "$api_accept" -H "$api_version" -H "$auth_header"                 -H "Content-Type: application/json"                 --data-binary @"$RUNNER_TEMP/create-tag.json"                 "$api_root/git/refs"                 -o "$RUNNER_TEMP/created-tag.json"
+              jq -e --arg ref "refs/tags/$RELEASE_TAG" --arg sha "$SOURCE_SHA"                 '.ref == $ref and .object.sha == $sha'                 "$RUNNER_TEMP/created-tag.json" >/dev/null
+              ;;
+            *)
+              cat "$RUNNER_TEMP/tag-response.json" >&2
+              echo "Unable to inspect release tag (HTTP $tag_status)" >&2
+              exit 1
+              ;;
+          esac
+
+          cat > "$RUNNER_TEMP/release-notes.md" <<NOTES_EOF
+          AceFox $RELEASE_VERSION, AI2Apps-branded Linux ARM64 runtime.
+
+          Downloads:
+          - AppImage for direct desktop launch
+          - Portable ZIP containing the native install tree
+          - SHA256SUMS and runtime-manifest.json for integrity and provenance
+
+          This Linux build is intentionally unsigned. Verify downloads with SHA256SUMS.
+
+          Build note: Firefox 143 bootstrap artifacts are no longer available. This build uses the host Ubuntu 24.04 ARM64 toolchain, and WASM sandboxed libraries are disabled because that toolchain's WASI libc++ is incompatible with Firefox 143 RLBox linking.
+          NOTES_EOF
+          release_body="$(cat "$RUNNER_TEMP/release-notes.md")"
+
+          jq -n             --arg tag "$RELEASE_TAG"             --arg name "$RELEASE_NAME"             --arg body "$release_body"             '{tag_name: $tag, name: $name, body: $body, draft: true, prerelease: true}'             > "$RUNNER_TEMP/create-release.json"
+          curl --fail-with-body --silent --show-error             -X POST -H "$api_accept" -H "$api_version" -H "$auth_header"             -H "Content-Type: application/json"             --data-binary @"$RUNNER_TEMP/create-release.json"             "$api_root/releases"             -o "$RUNNER_TEMP/release-response.json"
+
+          release_id="$(jq -er '.id' "$RUNNER_TEMP/release-response.json")"
+          upload_url="$(jq -er '.upload_url | sub("\\{.*"; "")' "$RUNNER_TEMP/release-response.json")"
+          for asset in "$ASSETS_DIR"/*; do
+            asset_name="$(basename "$asset")"
+            encoded_name="$(jq -rn --arg name "$asset_name" '$name | @uri')"
+            case "$asset_name" in
+              *.AppImage) content_type="application/octet-stream" ;;
+              *.zip) content_type="application/zip" ;;
+              *.json) content_type="application/json" ;;
+              *) content_type="text/plain" ;;
+            esac
+            echo "Uploading $asset_name"
+            curl --fail-with-body --silent --show-error --retry 3               -X POST -H "$api_accept" -H "$api_version" -H "$auth_header"               -H "Content-Type: $content_type"               --data-binary @"$asset"               "$upload_url?name=$encoded_name"               -o "$RUNNER_TEMP/upload-response.json"
+            jq -e '.state == "uploaded"' "$RUNNER_TEMP/upload-response.json" >/dev/null
+          done
+
+          curl --fail-with-body --silent --show-error             -X PATCH -H "$api_accept" -H "$api_version" -H "$auth_header"             -H "Content-Type: application/json"             --data-binary '{"draft":false,"prerelease":true}'             "$api_root/releases/$release_id"             -o "$RUNNER_TEMP/published-release.json"
+          release_url="$(jq -er '.html_url' "$RUNNER_TEMP/published-release.json")"
+          echo "Published $release_url"
+          echo "### Published [$RELEASE_TAG]($release_url)" >> "$GITHUB_STEP_SUMMARY"
