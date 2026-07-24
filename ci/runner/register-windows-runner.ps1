@@ -12,6 +12,8 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$RunnerLabels,
 
+    [string]$RunnerGroup = '',
+
     [string]$WorkDirectory = '_work'
 )
 
@@ -38,14 +40,22 @@ if (Test-Path -LiteralPath (Join-Path (Get-Location) '.runner')) {
 
 # Do not write or print $RunnerToken. config.cmd stores only the credential
 # required by the GitHub Actions runner service.
-& $runnerConfig `
-    --unattended `
-    --url $RunnerUrl `
-    --token $RunnerToken `
-    --name $RunnerName `
-    --labels $RunnerLabels `
-    --work $WorkDirectory `
-    --runasservice
+$configArguments = @(
+    '--unattended'
+    '--url', $RunnerUrl
+    '--token', $RunnerToken
+    '--name', $RunnerName
+    '--labels', $RunnerLabels
+    '--work', $WorkDirectory
+)
+
+if ($RunnerGroup) {
+    $configArguments += @('--runnergroup', $RunnerGroup)
+}
+
+$configArguments += '--runasservice'
+
+& $runnerConfig @configArguments
 
 if ($LASTEXITCODE -ne 0) {
     throw "Runner registration failed with exit code $LASTEXITCODE."

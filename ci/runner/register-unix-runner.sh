@@ -18,6 +18,8 @@ Required:
 
 Optional:
   --work DIRECTORY   Work directory, default: _work
+  --runner-group GROUP
+                     Organization runner group, for example native-build
   --service-user USER
                      Account for the launchd/systemd service; default: current user
   --no-service       Register only; run ./run.sh manually afterward
@@ -30,6 +32,7 @@ runner_token=''
 runner_name=''
 runner_labels=''
 runner_work='_work'
+runner_group=''
 service_user="$(id -un)"
 install_service=true
 
@@ -40,6 +43,7 @@ while [[ $# -gt 0 ]]; do
     --name) runner_name="${2:?missing value for --name}"; shift 2 ;;
     --labels) runner_labels="${2:?missing value for --labels}"; shift 2 ;;
     --work) runner_work="${2:?missing value for --work}"; shift 2 ;;
+    --runner-group) runner_group="${2:?missing value for --runner-group}"; shift 2 ;;
     --service-user) service_user="${2:?missing value for --service-user}"; shift 2 ;;
     --no-service) install_service=false; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -72,13 +76,20 @@ fi
 
 # Do not echo the token. config.sh stores only the runner credential required
 # for the service to poll GitHub Actions.
-./config.sh \
-  --unattended \
-  --url "$runner_url" \
-  --token "$runner_token" \
-  --name "$runner_name" \
-  --labels "$runner_labels" \
+config_args=(
+  --unattended
+  --url "$runner_url"
+  --token "$runner_token"
+  --name "$runner_name"
+  --labels "$runner_labels"
   --work "$runner_work"
+)
+
+if [[ -n "$runner_group" ]]; then
+  config_args+=(--runnergroup "$runner_group")
+fi
+
+./config.sh "${config_args[@]}"
 
 # Recent runner packages generate svc.sh during configuration from the
 # platform-specific template, so it must be checked only after config.sh.

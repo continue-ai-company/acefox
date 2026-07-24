@@ -102,10 +102,11 @@ macOS：
 cd /Users/acefoxrunner/actions-runner
 
 /path/to/acefox/ci/runner/register-unix-runner.sh \
-  --url https://github.com/continue-ai-company/acefox \
+  --url https://github.com/continue-ai-company \
   --token 'TOKEN_FROM_GITHUB_UI' \
   --name acefox-macos-arm64-01 \
-  --labels acefox,native-build,macos,arm64
+  --labels acefox,native-build,macos,arm64 \
+  --runner-group native-build
 ```
 
 Ubuntu：
@@ -114,10 +115,11 @@ Ubuntu：
 cd /home/acefoxrunner/actions-runner
 
 /path/to/acefox/ci/runner/register-unix-runner.sh \
-  --url https://github.com/continue-ai-company/acefox \
+  --url https://github.com/continue-ai-company \
   --token 'TOKEN_FROM_GITHUB_UI' \
   --name acefox-linux-arm64-01 \
-  --labels acefox,native-build,linux,arm64
+  --labels acefox,native-build,linux,arm64 \
+  --runner-group native-build
 ```
 
 如果只是一次性排错，不想安装系统服务，在命令最后添加 `--no-service`，注册完成后手动执行 `./run.sh` 即可。
@@ -130,10 +132,11 @@ cd /home/acefoxrunner/actions-runner
 Set-Location C:\actions-runner
 
 & C:\path\to\acefox\ci\runner\register-windows-runner.ps1 `
-  -RunnerUrl 'https://github.com/continue-ai-company/acefox' `
+  -RunnerUrl 'https://github.com/continue-ai-company' `
   -RunnerToken 'TOKEN_FROM_GITHUB_UI' `
   -RunnerName 'acefox-windows-x64-01' `
-  -RunnerLabels 'acefox,native-build,windows,x64'
+  -RunnerLabels 'acefox,native-build,windows,x64' `
+  -RunnerGroup 'native-build'
 ```
 
 该脚本使用 `--runasservice`，因此 runner 会作为 Windows 服务启动。运行服务的专用账号必须拥有 `C:\actions-runner`、MozillaBuild 和 Visual Studio Build Tools 的访问权限，不能使用开发者个人账号。
