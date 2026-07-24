@@ -48,6 +48,9 @@ jobs:
       - name: Build and package
         shell: bash
         run: |
+          if [[ "${{ matrix.target }}" == "linux-arm64" ]]; then
+            export MOZCONFIG=ci/mozconfig/linux-arm64
+          fi
           ./mach build
           ./mach package
 
