@@ -81,7 +81,7 @@ jobs:
     timeout-minutes: 360
     steps:
       - name: Verify reusable Windows workspace
-        shell: powershell
+        shell: powershell -NoProfile -command ". '{0}'"
         run: |
           $source = 'D:\Workspace\continueAI\acefox'
           if (-not (Test-Path -LiteralPath "$source\mach")) {
@@ -96,7 +96,7 @@ jobs:
           Get-PSDrive -Name C,D | Format-Table -AutoSize
 
       - name: Incremental build and package
-        shell: powershell
+        shell: powershell -NoProfile -command ". '{0}'"
         run: |
           Get-ChildItem Env: |
             Where-Object Name -Like 'CONDA*' |
@@ -111,7 +111,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Smoke test and stage artifacts
-        shell: powershell
+        shell: powershell -NoProfile -command ". '{0}'"
         run: |
           $source = 'D:\Workspace\continueAI\acefox'
           $dist = "$source\obj-x86_64-pc-windows-msvc\dist"
