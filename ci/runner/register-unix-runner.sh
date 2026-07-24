@@ -60,8 +60,8 @@ if [[ "$(id -u)" -eq 0 ]]; then
   exit 1
 fi
 
-if [[ ! -x ./config.sh || ! -x ./svc.sh ]]; then
-  echo 'config.sh or svc.sh is missing. Run this from the extracted runner directory.' >&2
+if [[ ! -x ./config.sh ]]; then
+  echo 'config.sh is missing. Run this from the extracted runner directory.' >&2
   exit 1
 fi
 
@@ -79,6 +79,13 @@ fi
   --name "$runner_name" \
   --labels "$runner_labels" \
   --work "$runner_work"
+
+# Recent runner packages generate svc.sh during configuration from the
+# platform-specific template, so it must be checked only after config.sh.
+if [[ ! -x ./svc.sh ]]; then
+  echo 'Runner configuration did not create svc.sh; cannot install the service.' >&2
+  exit 1
+fi
 
 if [[ "$install_service" == false ]]; then
   echo 'Runner registered. Start it interactively with: ./run.sh'
