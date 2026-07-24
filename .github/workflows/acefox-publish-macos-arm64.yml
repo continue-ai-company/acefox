@@ -17,6 +17,20 @@ on:
         required: true
         default: 143.0a1
         type: string
+  workflow_call:
+    inputs:
+      source_run_id:
+        description: Successful AceFox build workflow run ID
+        required: true
+        type: string
+      release_tag:
+        description: Existing multi-platform pre-release tag
+        required: true
+        type: string
+      release_version:
+        description: AceFox version used in asset names
+        required: true
+        type: string
 
 permissions:
   actions: read
