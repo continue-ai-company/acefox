@@ -57,11 +57,28 @@ jobs:
       MOZCONFIG: ci/mozconfig/macos-arm64
       PYTHON_CMD: /opt/homebrew/bin/python3.12
       DEVELOPER_DIR: /Applications/Xcode-16.4.app/Contents/Developer
+      CCACHE: /opt/homebrew/bin/sccache
+      RUSTC_WRAPPER: /opt/homebrew/bin/sccache
+      SCCACHE_CACHE_SIZE: 50G
+      SCCACHE_VERBOSE_STATS: "true"
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
           clean: false
+      - name: Prepare persistent native build caches
+        shell: bash
+        run: |
+          set -euo pipefail
+          cache_root="${RUNNER_WORKSPACE:?}/_acefox-cache"
+          objdir="$cache_root/obj-macos-arm64"
+          sccache_dir="$cache_root/sccache"
+          mkdir -p "$objdir" "$sccache_dir"
+          {
+            echo "ACEFOX_MOZ_OBJDIR=$objdir"
+            echo "SCCACHE_DIR=$sccache_dir"
+          } >> "$GITHUB_ENV"
+          SCCACHE_DIR="$sccache_dir" "$CCACHE" --start-server
       - name: Configure macOS native toolchain
         shell: bash
         run: |
@@ -84,13 +101,25 @@ jobs:
         run: |
           "$PYTHON_CMD" ./mach build
           "$PYTHON_CMD" ./mach package
+      - name: Stage unsigned build output
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="$RUNNER_TEMP/acefox-macos-artifact"
+          rm -rf "$output"
+          mkdir -p "$output"
+          cp -a "$ACEFOX_MOZ_OBJDIR/dist/." "$output/"
       - name: Upload unsigned build output
         uses: actions/upload-artifact@v4
         with:
           name: acefox-macos-arm64
-          path: obj-*/dist/**
+          path: ${{ runner.temp }}/acefox-macos-artifact/**
           if-no-files-found: error
           retention-days: 7
+      - name: Report compiler-cache statistics
+        if: ${{ always() }}
+        shell: bash
+        run: '"$CCACHE" --show-stats'
 
   linux-arm64:
     name: linux-arm64

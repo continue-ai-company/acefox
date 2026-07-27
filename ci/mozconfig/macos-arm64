@@ -8,5 +8,11 @@ ac_add_options --disable-bootstrap
 # It is not required for the unsigned AI2Apps runtime POC.
 ac_add_options --disable-crashreporter
 
-# Keep native macOS ARM64 build output separate and predictable.
-mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-macos-arm64
+# Keep native macOS ARM64 build output separate and predictable. CI supplies a
+# stable runner-local location so its incremental object directory survives
+# across workflow runs; local builds retain the source-tree default.
+if [ -n "${ACEFOX_MOZ_OBJDIR:-}" ]; then
+  mk_add_options MOZ_OBJDIR="${ACEFOX_MOZ_OBJDIR}"
+else
+  mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-macos-arm64
+fi
