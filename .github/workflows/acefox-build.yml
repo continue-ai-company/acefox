@@ -126,10 +126,26 @@ jobs:
     if: inputs.target == 'all' || inputs.target == 'linux-arm64'
     runs-on: [self-hosted, acefox, native-build, linux, arm64]
     timeout-minutes: 360
+    env:
+      MOZCONFIG: ci/mozconfig/linux-arm64-release
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
+          clean: false
+      - name: Clean workspace while preserving the incremental build
+        shell: bash
+        run: |
+          set -euo pipefail
+          git reset --hard "$GITHUB_SHA"
+          git clean -ffdx -e /obj-linux-arm64-release/
+
+          if [[ -d obj-linux-arm64-release ]]; then
+            echo "Reusing Linux ARM64 build cache:"
+            du -sh obj-linux-arm64-release
+          else
+            echo "No existing Linux ARM64 build cache; starting a clean build."
+          fi
       - name: Report native build host
         shell: bash
         run: |
@@ -137,8 +153,6 @@ jobs:
           df -h .
       - name: Build and package
         shell: bash
-        env:
-          MOZCONFIG: ci/mozconfig/linux-arm64
         run: |
           ./mach build
           ./mach package
@@ -146,7 +160,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: acefox-linux-arm64
-          path: obj-*/dist/**
+          path: obj-linux-arm64-release/dist/**
           if-no-files-found: error
           retention-days: 7
 

@@ -40,6 +40,21 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 1
+          clean: false
+
+      - name: Clean workspace while preserving the incremental build
+        shell: bash
+        run: |
+          set -euo pipefail
+          git reset --hard "$GITHUB_SHA"
+          git clean -ffdx -e /obj-linux-arm64-release/
+
+          if [[ -d obj-linux-arm64-release ]]; then
+            echo "Reusing Linux ARM64 build cache:"
+            du -sh obj-linux-arm64-release
+          else
+            echo "No existing Linux ARM64 build cache; starting a clean build."
+          fi
 
       - name: Resolve release metadata
         env:

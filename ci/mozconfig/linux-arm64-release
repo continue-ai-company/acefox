@@ -11,4 +11,7 @@ ac_add_options --with-branding=browser/branding/ai2apps
 ac_add_options --enable-optimize
 ac_add_options --disable-debug
 
+# Reuse the object directory between self-hosted runner jobs, while allowing
+# Mozilla's build system to discard it automatically after incompatible changes.
+mk_add_options AUTOCLOBBER=1
 mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-linux-arm64-release
