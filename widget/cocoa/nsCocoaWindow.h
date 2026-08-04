@@ -210,6 +210,9 @@ class nsCocoaWindow final : public nsBaseWidget {
   void Destroy() override;
 
   void Show(bool aState) override;
+  nsresult SetAlwaysOnTop(bool aState) override;
+  bool IsAlwaysOnTop() const override { return mAlwaysOnTop; }
+  nsresult ShowWithoutActivation(bool aState) override;
   bool NeedsRecreateToReshow() override;
 
   void Enable(bool aState) override;
@@ -635,6 +638,7 @@ class nsCocoaWindow final : public nsBaseWidget {
   bool mInResize = false;           // true if in a call to DoResize().
   bool mWindowTransformIsIdentity = true;
   bool mAlwaysOnTop = false;
+  bool mShowWithoutActivation = false;
   bool mAspectRatioLocked = false;
   bool mIsAlert = false;  // True if this is an non-native alert window.
   bool mIsPrimaryWindow = false;

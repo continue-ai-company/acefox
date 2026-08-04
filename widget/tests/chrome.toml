@@ -7,6 +7,9 @@ tags = "os_integration"
 
 ["test_alwaysontop_focus.xhtml"]
 
+["test_companion_window_state.xhtml"]
+run-if = ["os == 'mac'"] # Cocoa companion window state
+
 ["test_autocorrect_in_parent.html"]
 
 # Privacy relevant

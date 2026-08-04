@@ -28,7 +28,7 @@ webidl BrowsingContext;
 
 native LiveResizeListenerArray(nsTArray<RefPtr<mozilla::LiveResizeListener>>);
 
-[builtinclass, scriptable, uuid(d6d7a014-e28d-4c9d-8727-1cf6d870619b)]
+[builtinclass, scriptable, uuid(3771307a-75db-407e-8ad6-e4705c90fc84)]
 interface nsIAppWindow : nsISupports
 {
   /**
@@ -104,6 +104,19 @@ interface nsIAppWindow : nsISupports
   void lockAspectRatio(in boolean aShouldLock);
 
   attribute uint32_t chromeFlags;
+
+  /**
+   * Runtime presentation state used by a trusted controller to group this
+   * native window with a companion application without stealing focus.
+   */
+  const unsigned short COMPANION_VISIBILITY_UNCHANGED = 0;
+  const unsigned short COMPANION_VISIBILITY_SHOWN = 1;
+  const unsigned short COMPANION_VISIBILITY_HIDDEN = 2;
+
+  void setCompanionWindowState(in boolean floating,
+                               in unsigned short visibility);
+  readonly attribute boolean companionWindowFloating;
+  readonly attribute boolean companionWindowVisible;
 
   /**
    * Begin assuming |chromeFlags| don't change hereafter, and assert

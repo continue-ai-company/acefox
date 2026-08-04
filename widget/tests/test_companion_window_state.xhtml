@@ -1,0 +1,102 @@
+<!DOCTYPE HTML>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8" />
+  <title>Test dynamic companion window presentation without focus stealing.</title>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <link rel="stylesheet" href="chrome://mochikit/content/tests/SimpleTest/test.css"/>
+  <script><![CDATA[
+    add_task(async function testCompanionWindowState() {
+      const ownerWindow = window.docShell.rootTreeItem.domWindow;
+      await SimpleTest.promiseFocus(ownerWindow);
+      is(
+        Services.focus.activeWindow,
+        ownerWindow,
+        "Owner window starts focused"
+      );
+
+      const companionWindow = Services.ww.openWindow(
+        null,
+        "about:blank",
+        null,
+        "chrome,width=300,height=300",
+        null
+      );
+      await new Promise(resolve => {
+        companionWindow.addEventListener("load", resolve, { once: true });
+      });
+      await new Promise(resolve => SimpleTest.executeSoon(resolve));
+
+      try {
+        const appWindow = companionWindow.docShell.treeOwner
+          .QueryInterface(Ci.nsIInterfaceRequestor)
+          .getInterface(Ci.nsIAppWindow);
+        appWindow.setCompanionWindowState(
+          false,
+          Ci.nsIAppWindow.COMPANION_VISIBILITY_HIDDEN
+        );
+        await SimpleTest.promiseFocus(ownerWindow);
+        ok(!appWindow.companionWindowVisible, "Companion is genuinely hidden");
+        ok(!appWindow.companionWindowFloating, "Hidden companion is at normal level");
+        is(
+          Services.focus.activeWindow,
+          ownerWindow,
+          "Hiding the companion returns focus to the owner"
+        );
+
+        appWindow.setCompanionWindowState(
+          false,
+          Ci.nsIAppWindow.COMPANION_VISIBILITY_SHOWN
+        );
+        await new Promise(resolve => SimpleTest.executeSoon(resolve));
+        ok(appWindow.companionWindowVisible, "Companion is shown at normal level");
+        ok(!appWindow.companionWindowFloating, "Shown companion remains at normal level");
+        is(
+          Services.focus.activeWindow,
+          ownerWindow,
+          "Showing a normal companion does not steal focus"
+        );
+
+        appWindow.setCompanionWindowState(
+          true,
+          Ci.nsIAppWindow.COMPANION_VISIBILITY_UNCHANGED
+        );
+        await new Promise(resolve => SimpleTest.executeSoon(resolve));
+        ok(appWindow.companionWindowFloating, "Companion becomes floating");
+        is(
+          Services.focus.activeWindow,
+          ownerWindow,
+          "Promoting a visible companion does not steal focus"
+        );
+
+        appWindow.setCompanionWindowState(
+          false,
+          Ci.nsIAppWindow.COMPANION_VISIBILITY_HIDDEN
+        );
+        ok(!appWindow.companionWindowVisible, "Companion is genuinely hidden");
+        ok(!appWindow.companionWindowFloating, "Hidden companion returns to normal level");
+
+        appWindow.setCompanionWindowState(
+          true,
+          Ci.nsIAppWindow.COMPANION_VISIBILITY_SHOWN
+        );
+        await new Promise(resolve => SimpleTest.executeSoon(resolve));
+        ok(appWindow.companionWindowVisible, "Companion is shown again");
+        ok(appWindow.companionWindowFloating, "Shown companion is floating");
+        is(
+          Services.focus.activeWindow,
+          ownerWindow,
+          "Showing a companion does not steal focus"
+        );
+      } finally {
+        companionWindow.close();
+      }
+    });
+  ]]></script>
+</head>
+<body>
+<p id="display"></p>
+<div id="content" style="display: none"></div>
+<pre id="test"></pre>
+</body>
+</html>

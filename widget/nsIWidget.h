@@ -621,6 +621,26 @@ class nsIWidget : public nsISupports {
   virtual void Show(bool aState) = 0;
 
   /**
+   * Dynamically place a top-level window above normal windows without
+   * changing keyboard focus. Platforms that do not support this operation
+   * return NS_ERROR_NOT_IMPLEMENTED.
+   */
+  virtual nsresult SetAlwaysOnTop(bool aState) {
+    return NS_ERROR_NOT_IMPLEMENTED;
+  }
+
+  virtual bool IsAlwaysOnTop() const { return false; }
+
+  /**
+   * Show or hide a top-level window without activating its application.
+   * Platforms that do not support this operation return
+   * NS_ERROR_NOT_IMPLEMENTED.
+   */
+  virtual nsresult ShowWithoutActivation(bool aState) {
+    return NS_ERROR_NOT_IMPLEMENTED;
+  }
+
+  /**
    * Whether or not a widget must be recreated after being hidden to show
    * again properly.
    */

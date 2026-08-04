@@ -323,6 +323,39 @@ NS_IMETHODIMP AppWindow::AssumeChromeFlagsAreFrozen() {
   return NS_OK;
 }
 
+NS_IMETHODIMP AppWindow::SetCompanionWindowState(bool aFloating,
+                                                 uint16_t aVisibility) {
+  NS_ENSURE_STATE(mWindow);
+  if (aVisibility > nsIAppWindow::COMPANION_VISIBILITY_HIDDEN) {
+    return NS_ERROR_INVALID_ARG;
+  }
+
+  if (aVisibility == nsIAppWindow::COMPANION_VISIBILITY_HIDDEN) {
+    MOZ_TRY(mWindow->ShowWithoutActivation(false));
+    return mWindow->SetAlwaysOnTop(aFloating);
+  }
+
+  MOZ_TRY(mWindow->SetAlwaysOnTop(aFloating));
+  if (aVisibility == nsIAppWindow::COMPANION_VISIBILITY_SHOWN) {
+    MOZ_TRY(mWindow->ShowWithoutActivation(true));
+  }
+  return NS_OK;
+}
+
+NS_IMETHODIMP AppWindow::GetCompanionWindowFloating(bool* aFloating) {
+  NS_ENSURE_ARG_POINTER(aFloating);
+  NS_ENSURE_STATE(mWindow);
+  *aFloating = mWindow->IsAlwaysOnTop();
+  return NS_OK;
+}
+
+NS_IMETHODIMP AppWindow::GetCompanionWindowVisible(bool* aVisible) {
+  NS_ENSURE_ARG_POINTER(aVisible);
+  NS_ENSURE_STATE(mWindow);
+  *aVisible = mWindow->IsVisible();
+  return NS_OK;
+}
+
 NS_IMETHODIMP AppWindow::SetIntrinsicallySized(bool aIntrinsicallySized) {
   mIntrinsicallySized = aIntrinsicallySized;
   return NS_OK;

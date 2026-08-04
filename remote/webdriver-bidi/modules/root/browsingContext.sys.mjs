@@ -58,6 +58,17 @@ ChromeUtils.defineLazyGetter(lazy, "logger", () =>
 // Maximal window dimension allowed when emulating a viewport.
 const MAX_WINDOW_SIZE = 10000000;
 
+const CompanionWindowLevel = Object.freeze({
+  Normal: "normal",
+  Floating: "floating",
+});
+
+const CompanionWindowVisibility = Object.freeze({
+  Unchanged: "unchanged",
+  Shown: "shown",
+  Hidden: "hidden",
+});
+
 /**
  * @typedef {string} ClipRectangleType
  */
@@ -1834,6 +1845,86 @@ class BrowsingContextModule extends RootBiDiModule {
       th=currentHeight;
     }
     lazy.windowManager.adjustWindowGeometry(targetWindow,tx,ty,tw,th);
+  }
+
+  /**
+   * Set the native presentation state used while this browser window follows
+   * a companion desktop application. This command never activates the browser.
+   *
+   * @param {object=} options
+   * @param {string} options.context
+   *     Id of the browsing context whose native window should be updated.
+   * @param {"normal"|"floating"} options.level
+   *     Native window level to apply.
+   * @param {"unchanged"|"shown"|"hidden"=} options.visibility
+   *     Optional visibility transition. Defaults to "unchanged".
+   * @returns {object}
+   *     The applied level, visibility, and whether the target is active.
+   * @throws {UnsupportedOperationError}
+   *     Raised when the command is called outside macOS.
+   */
+  async setCompanionWindowState(options = {}) {
+    const {
+      context: contextId,
+      level,
+      visibility = CompanionWindowVisibility.Unchanged,
+    } = options;
+
+    lazy.assert.string(
+      contextId,
+      lazy.pprint`Expected "context" to be a string, got ${contextId}`
+    );
+    lazy.assert.in(
+      level,
+      Object.values(CompanionWindowLevel),
+      `Expected "level" to be one of ${Object.values(CompanionWindowLevel)}, ` +
+        lazy.pprint`got ${level}`
+    );
+    lazy.assert.in(
+      visibility,
+      Object.values(CompanionWindowVisibility),
+      `Expected "visibility" to be one of ${Object.values(
+        CompanionWindowVisibility
+      )}, ` + lazy.pprint`got ${visibility}`
+    );
+
+    if (!lazy.AppInfo.isMac) {
+      throw new lazy.error.UnsupportedOperationError(
+        `Companion window state is not yet supported for ${lazy.AppInfo.name}`
+      );
+    }
+
+    const context = this.#getBrowsingContext(contextId);
+    const targetTab = lazy.TabManager.getTabForBrowsingContext(context);
+    const targetWindow = lazy.TabManager.getWindowForTab(targetTab);
+    const appWindow = targetWindow.docShell.treeOwner
+      .QueryInterface(Ci.nsIInterfaceRequestor)
+      .getInterface(Ci.nsIAppWindow);
+    const visibilityValue = {
+      [CompanionWindowVisibility.Unchanged]:
+        Ci.nsIAppWindow.COMPANION_VISIBILITY_UNCHANGED,
+      [CompanionWindowVisibility.Shown]:
+        Ci.nsIAppWindow.COMPANION_VISIBILITY_SHOWN,
+      [CompanionWindowVisibility.Hidden]:
+        Ci.nsIAppWindow.COMPANION_VISIBILITY_HIDDEN,
+    }[visibility];
+
+    appWindow.setCompanionWindowState(
+      level === CompanionWindowLevel.Floating,
+      visibilityValue
+    );
+
+    return {
+      level: appWindow.companionWindowFloating
+        ? CompanionWindowLevel.Floating
+        : CompanionWindowLevel.Normal,
+      visibility: appWindow.companionWindowVisible
+        ? CompanionWindowVisibility.Shown
+        : CompanionWindowVisibility.Hidden,
+      active:
+        appWindow.companionWindowVisible &&
+        Services.focus.activeWindow === targetWindow,
+    };
   }
 
   /**

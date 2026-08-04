@@ -5124,7 +5124,7 @@ void nsCocoaWindow::Show(bool aState) {
 
       // We don't want alwaysontop / alert windows to pull focus when they're
       // opened, as these tend to be for peripheral indicators and displays.
-      if (mAlwaysOnTop || mIsAlert) {
+      if (mAlwaysOnTop || mIsAlert || mShowWithoutActivation) {
         [mWindow orderFront:nil];
       } else {
         // When running as an accessory app (no dock icon), the app isn't
@@ -5178,6 +5178,55 @@ void nsCocoaWindow::Show(bool aState) {
   [mWindow setBeingShown:NO];
 
   NS_OBJC_END_TRY_IGNORE_BLOCK;
+}
+
+nsresult nsCocoaWindow::SetAlwaysOnTop(bool aState) {
+  NS_OBJC_BEGIN_TRY_BLOCK_RETURN;
+
+  if (!mWindow) {
+    return NS_ERROR_NOT_INITIALIZED;
+  }
+
+  mAlwaysOnTop = aState;
+  if (mModal) {
+    mWindow.level = NSModalPanelWindowLevel;
+  } else if (mWindowType == WindowType::Popup) {
+    SetPopupWindowLevel();
+  } else if (mAlwaysOnTop || mIsAlert) {
+    mWindow.level = NSFloatingWindowLevel;
+  } else {
+    mWindow.level = NSNormalWindowLevel;
+  }
+
+  if (mAlwaysOnTop && mWindow.isVisibleOrBeingShown) {
+    [mWindow orderFront:nil];
+  }
+  return NS_OK;
+
+  NS_OBJC_END_TRY_BLOCK_RETURN(NS_ERROR_FAILURE);
+}
+
+nsresult nsCocoaWindow::ShowWithoutActivation(bool aState) {
+  NS_OBJC_BEGIN_TRY_BLOCK_RETURN;
+
+  if (!mWindow) {
+    return NS_ERROR_NOT_INITIALIZED;
+  }
+  if (!aState) {
+    Show(false);
+    return mWindow.isVisibleOrBeingShown ? NS_ERROR_FAILURE : NS_OK;
+  }
+  if (mWindow.isVisibleOrBeingShown) {
+    [mWindow orderFront:nil];
+    return NS_OK;
+  }
+
+  mShowWithoutActivation = true;
+  Show(true);
+  mShowWithoutActivation = false;
+  return mWindow.isVisibleOrBeingShown ? NS_OK : NS_ERROR_FAILURE;
+
+  NS_OBJC_END_TRY_BLOCK_RETURN(NS_ERROR_FAILURE);
 }
 
 // Work around a problem where with multiple displays and multiple spaces
