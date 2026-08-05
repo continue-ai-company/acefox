@@ -4508,6 +4508,7 @@ nsCocoaWindow::~nsCocoaWindow() {
   }
 
   [mClosedRetainedWindow release];
+  [mKeyWindowBeforeDeminiaturize release];
 
   if (mContentLayer) {
     mNativeLayerRoot->RemoveLayer(mContentLayer);  // safe if already removed
@@ -5213,20 +5214,48 @@ nsresult nsCocoaWindow::ShowWithoutActivation(bool aState) {
     return NS_ERROR_NOT_INITIALIZED;
   }
   if (!aState) {
+    [mWindow setSuppressBecomeKeyWindow:NO];
     Show(false);
     return mWindow.isVisibleOrBeingShown ? NS_ERROR_FAILURE : NS_OK;
   }
+  [mWindow setSuppressBecomeKeyWindow:YES];
+  if (mWindow.miniaturized) {
+    [mKeyWindowBeforeDeminiaturize release];
+    mKeyWindowBeforeDeminiaturize = [NSApp.keyWindow retain];
+    [mWindow deminiaturize:nil];
+  }
   if (mWindow.isVisibleOrBeingShown) {
     [mWindow orderFront:nil];
+    if (!mWindow.ignoresMouseEvents) {
+      [mWindow releaseBecomeKeyWindowSuppressionAfterOrdering];
+    }
     return NS_OK;
   }
 
   mShowWithoutActivation = true;
   Show(true);
   mShowWithoutActivation = false;
+  if (!mWindow.ignoresMouseEvents) {
+    [mWindow releaseBecomeKeyWindowSuppressionAfterOrdering];
+  }
   return mWindow.isVisibleOrBeingShown ? NS_OK : NS_ERROR_FAILURE;
 
   NS_OBJC_END_TRY_BLOCK_RETURN(NS_ERROR_FAILURE);
+}
+
+void nsCocoaWindow::RestoreKeyWindowAfterDeminiaturize() {
+  NS_OBJC_BEGIN_TRY_IGNORE_BLOCK;
+
+  NSWindow* keyWindow = mKeyWindowBeforeDeminiaturize;
+  mKeyWindowBeforeDeminiaturize = nil;
+  if (keyWindow && keyWindow != mWindow) {
+    [keyWindow makeKeyWindow];
+  } else if (!keyWindow && mWindow.keyWindow) {
+    [mWindow resignKeyWindow];
+  }
+  [keyWindow release];
+
+  NS_OBJC_END_TRY_IGNORE_BLOCK;
 }
 
 // Work around a problem where with multiple displays and multiple spaces
@@ -6695,6 +6724,43 @@ void nsCocoaWindow::SetWindowOpacity(float aOpacity) {
   NS_OBJC_END_TRY_IGNORE_BLOCK;
 }
 
+float nsCocoaWindow::GetWindowOpacity() const {
+  NS_OBJC_BEGIN_TRY_BLOCK_RETURN;
+
+  return mWindow ? static_cast<float>(mWindow.alphaValue) : 1.0f;
+
+  NS_OBJC_END_TRY_BLOCK_RETURN(1.0f);
+}
+
+nsresult nsCocoaWindow::SetWindowIgnoresMouseEvents(bool aIgnore) {
+  NS_OBJC_BEGIN_TRY_BLOCK_RETURN;
+
+  if (!mWindow) {
+    return NS_ERROR_NOT_INITIALIZED;
+  }
+
+  [mWindow setIgnoresMouseEvents:aIgnore];
+  return mWindow.ignoresMouseEvents == aIgnore ? NS_OK : NS_ERROR_FAILURE;
+
+  NS_OBJC_END_TRY_BLOCK_RETURN(NS_ERROR_FAILURE);
+}
+
+bool nsCocoaWindow::WindowIgnoresMouseEvents() const {
+  NS_OBJC_BEGIN_TRY_BLOCK_RETURN;
+
+  return mWindow && mWindow.ignoresMouseEvents;
+
+  NS_OBJC_END_TRY_BLOCK_RETURN(false);
+}
+
+bool nsCocoaWindow::IsMinimized() const {
+  NS_OBJC_BEGIN_TRY_BLOCK_RETURN;
+
+  return mWindow && mWindow.miniaturized;
+
+  NS_OBJC_END_TRY_BLOCK_RETURN(false);
+}
+
 void nsCocoaWindow::SetColorScheme(const Maybe<ColorScheme>& aScheme) {
   NS_OBJC_BEGIN_TRY_IGNORE_BLOCK;
 
@@ -7299,6 +7365,7 @@ void nsCocoaWindow::CocoaWindowDidResize() {
   if (!mGeckoWindow) {
     return;
   }
+  mGeckoWindow->RestoreKeyWindowAfterDeminiaturize();
   mGeckoWindow->FinishCurrentTransitionIfMatching(
       nsCocoaWindow::TransitionType::Deminiaturize);
   if (mGeckoWindow->IsPrimaryWindow()) {
@@ -7499,8 +7566,33 @@ static NSMutableSet* gSwizzledFrameViewClasses = nil;
   mDrawTitle = NO;
   mTouchBar = nil;
   mIsAnimationSuppressed = NO;
+  mSuppressBecomeKeyWindow = NO;
 
   return self;
+}
+
+- (BOOL)canBecomeKeyWindow {
+  return !mSuppressBecomeKeyWindow && [super canBecomeKeyWindow];
+}
+
+- (void)setSuppressBecomeKeyWindow:(BOOL)aValue {
+  mSuppressBecomeKeyWindow = aValue;
+}
+
+- (BOOL)isBecomeKeyWindowSuppressed {
+  return mSuppressBecomeKeyWindow;
+}
+
+- (void)releaseBecomeKeyWindowSuppressionAfterOrdering {
+  [self performSelector:@selector(releaseBecomeKeyWindowSuppressionIfShown)
+             withObject:nil
+             afterDelay:0];
+}
+
+- (void)releaseBecomeKeyWindowSuppressionIfShown {
+  if (!self.ignoresMouseEvents) {
+    mSuppressBecomeKeyWindow = NO;
+  }
 }
 
 // Returns an autoreleased NSImage.
@@ -8268,7 +8360,7 @@ static const NSUInteger kWindowShadowOptionsTooltip = 4;
 @implementation BorderlessWindow
 
 - (BOOL)canBecomeKeyWindow {
-  return YES;
+  return !self.isBecomeKeyWindowSuppressed;
 }
 
 - (void)sendEvent:(NSEvent*)anEvent {

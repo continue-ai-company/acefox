@@ -6,6 +6,43 @@
   <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" href="chrome://mochikit/content/tests/SimpleTest/test.css"/>
   <script><![CDATA[
+    function nextTick() {
+      return new Promise(resolve => SimpleTest.executeSoon(resolve));
+    }
+
+    function waitForEvent(target, type) {
+      return new Promise(resolve => {
+        target.addEventListener(type, resolve, { once: true });
+      });
+    }
+
+    async function waitForCondition(condition, message) {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if (condition()) {
+          return;
+        }
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      ok(false, message);
+    }
+
+    function getWindowBounds(targetWindow) {
+      return {
+        x: targetWindow.screenX,
+        y: targetWindow.screenY,
+        width: targetWindow.outerWidth,
+        height: targetWindow.outerHeight,
+      };
+    }
+
+    function assertWindowBounds(targetWindow, expected, message) {
+      const actual = getWindowBounds(targetWindow);
+      is(actual.x, expected.x, `${message}: x`);
+      is(actual.y, expected.y, `${message}: y`);
+      is(actual.width, expected.width, `${message}: width`);
+      is(actual.height, expected.height, `${message}: height`);
+    }
+
     add_task(async function testCompanionWindowState() {
       const ownerWindow = window.docShell.rootTreeItem.domWindow;
       await SimpleTest.promiseFocus(ownerWindow);
@@ -25,7 +62,7 @@
       await new Promise(resolve => {
         companionWindow.addEventListener("load", resolve, { once: true });
       });
-      await new Promise(resolve => SimpleTest.executeSoon(resolve));
+      await nextTick();
 
       try {
         const appWindow = companionWindow.docShell.treeOwner
@@ -37,6 +74,11 @@
         );
         await SimpleTest.promiseFocus(ownerWindow);
         ok(!appWindow.companionWindowVisible, "Companion is genuinely hidden");
+        is(
+          appWindow.companionWindowVisibility,
+          Ci.nsIAppWindow.COMPANION_VISIBILITY_HIDDEN,
+          "Hidden reports the actual native state"
+        );
         ok(!appWindow.companionWindowFloating, "Hidden companion is at normal level");
         is(
           Services.focus.activeWindow,
@@ -44,24 +86,132 @@
           "Hiding the companion returns focus to the owner"
         );
 
+        const boundsBeforeTransparent = getWindowBounds(companionWindow);
+        appWindow.setCompanionWindowState(
+          false,
+          Ci.nsIAppWindow.COMPANION_VISIBILITY_TRANSPARENT
+        );
+        await waitForCondition(
+          () => companionWindow.document.visibilityState === "visible",
+          "Transparent companion document becomes visible"
+        );
+        ok(appWindow.companionWindowVisible, "Transparent companion stays shown");
+        is(
+          appWindow.companionWindowVisibility,
+          Ci.nsIAppWindow.COMPANION_VISIBILITY_TRANSPARENT,
+          "Transparent reports the actual native state"
+        );
+        is(
+          companionWindow.windowState,
+          companionWindow.STATE_NORMAL,
+          "Transparent companion is not minimized"
+        );
+        is(
+          companionWindow.document.visibilityState,
+          "visible",
+          "Transparent companion document remains visible"
+        );
+        assertWindowBounds(
+          companionWindow,
+          boundsBeforeTransparent,
+          "Transparent does not move or resize the companion"
+        );
+        ok(!appWindow.companionWindowFloating, "Transparent companion remains at normal level");
+        is(
+          Services.focus.activeWindow,
+          ownerWindow,
+          "Making the companion transparent does not steal focus"
+        );
+
+        let timerTicks = 0;
+        const timer = companionWindow.setInterval(() => timerTicks++, 10);
+        await new Promise(resolve => ownerWindow.setTimeout(resolve, 150));
+        companionWindow.clearInterval(timer);
+        ok(timerTicks > 0, "Page timers continue while the companion is transparent");
+
         appWindow.setCompanionWindowState(
           false,
           Ci.nsIAppWindow.COMPANION_VISIBILITY_SHOWN
         );
-        await new Promise(resolve => SimpleTest.executeSoon(resolve));
-        ok(appWindow.companionWindowVisible, "Companion is shown at normal level");
-        ok(!appWindow.companionWindowFloating, "Shown companion remains at normal level");
+        await nextTick();
+        is(
+          appWindow.companionWindowVisibility,
+          Ci.nsIAppWindow.COMPANION_VISIBILITY_SHOWN,
+          "Shown restores opacity and mouse event handling"
+        );
+        assertWindowBounds(
+          companionWindow,
+          boundsBeforeTransparent,
+          "Restoring shown does not move or resize the companion"
+        );
         is(
           Services.focus.activeWindow,
           ownerWindow,
-          "Showing a normal companion does not steal focus"
+          "Restoring shown does not steal focus"
+        );
+
+        for (let i = 0; i < 20; i++) {
+          const visibility =
+            i % 2 == 0
+              ? Ci.nsIAppWindow.COMPANION_VISIBILITY_TRANSPARENT
+              : Ci.nsIAppWindow.COMPANION_VISIBILITY_SHOWN;
+          appWindow.setCompanionWindowState(false, visibility);
+          is(
+            appWindow.companionWindowVisibility,
+            visibility,
+            `Rapid visibility transition ${i + 1} applied`
+          );
+        }
+        assertWindowBounds(
+          companionWindow,
+          boundsBeforeTransparent,
+          "Rapid visibility transitions preserve window bounds"
+        );
+
+        let sizeModeChanged = waitForEvent(companionWindow, "sizemodechange");
+        companionWindow.minimize();
+        await sizeModeChanged;
+        is(
+          companionWindow.windowState,
+          companionWindow.STATE_MINIMIZED,
+          "Companion was minimized before applying transparent"
+        );
+        sizeModeChanged = waitForEvent(companionWindow, "sizemodechange");
+        appWindow.setCompanionWindowState(
+          false,
+          Ci.nsIAppWindow.COMPANION_VISIBILITY_TRANSPARENT
+        );
+        await sizeModeChanged;
+        is(
+          companionWindow.windowState,
+          companionWindow.STATE_NORMAL,
+          "Transparent deminiaturizes without activation"
+        );
+        is(
+          appWindow.companionWindowVisibility,
+          Ci.nsIAppWindow.COMPANION_VISIBILITY_TRANSPARENT,
+          "Deminiaturized companion becomes transparent"
+        );
+        assertWindowBounds(
+          companionWindow,
+          boundsBeforeTransparent,
+          "Deminiaturizing for transparent preserves window bounds"
+        );
+        is(
+          Services.focus.activeWindow,
+          ownerWindow,
+          "Deminiaturizing for transparent does not steal focus"
+        );
+        appWindow.setCompanionWindowState(
+          false,
+          Ci.nsIAppWindow.COMPANION_VISIBILITY_SHOWN
         );
 
         appWindow.setCompanionWindowState(
           true,
           Ci.nsIAppWindow.COMPANION_VISIBILITY_UNCHANGED
         );
-        await new Promise(resolve => SimpleTest.executeSoon(resolve));
+        await nextTick();
         ok(appWindow.companionWindowFloating, "Companion becomes floating");
         is(
           Services.focus.activeWindow,
@@ -74,14 +224,24 @@
           Ci.nsIAppWindow.COMPANION_VISIBILITY_HIDDEN
         );
         ok(!appWindow.companionWindowVisible, "Companion is genuinely hidden");
+        is(
+          appWindow.companionWindowVisibility,
+          Ci.nsIAppWindow.COMPANION_VISIBILITY_HIDDEN,
+          "Hidden clears the transparent state"
+        );
         ok(!appWindow.companionWindowFloating, "Hidden companion returns to normal level");
 
         appWindow.setCompanionWindowState(
           true,
           Ci.nsIAppWindow.COMPANION_VISIBILITY_SHOWN
         );
-        await new Promise(resolve => SimpleTest.executeSoon(resolve));
+        await nextTick();
         ok(appWindow.companionWindowVisible, "Companion is shown again");
+        is(
+          appWindow.companionWindowVisibility,
+          Ci.nsIAppWindow.COMPANION_VISIBILITY_SHOWN,
+          "Showing after hidden restores the native shown state"
+        );
         ok(appWindow.companionWindowFloating, "Shown companion is floating");
         is(
           Services.focus.activeWindow,

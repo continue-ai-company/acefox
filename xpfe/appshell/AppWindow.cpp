@@ -326,18 +326,51 @@ NS_IMETHODIMP AppWindow::AssumeChromeFlagsAreFrozen() {
 NS_IMETHODIMP AppWindow::SetCompanionWindowState(bool aFloating,
                                                  uint16_t aVisibility) {
   NS_ENSURE_STATE(mWindow);
-  if (aVisibility > nsIAppWindow::COMPANION_VISIBILITY_HIDDEN) {
+  if (aVisibility > nsIAppWindow::COMPANION_VISIBILITY_TRANSPARENT) {
     return NS_ERROR_INVALID_ARG;
   }
+  const bool wasMinimized = mWindow->IsMinimized();
 
   if (aVisibility == nsIAppWindow::COMPANION_VISIBILITY_HIDDEN) {
     MOZ_TRY(mWindow->ShowWithoutActivation(false));
-    return mWindow->SetAlwaysOnTop(aFloating);
+    mWindow->SetWindowOpacity(1.0f);
+    MOZ_TRY(mWindow->SetWindowIgnoresMouseEvents(false));
+    MOZ_TRY(mWindow->SetAlwaysOnTop(aFloating));
+  } else if (aVisibility ==
+             nsIAppWindow::COMPANION_VISIBILITY_TRANSPARENT) {
+    mWindow->SetWindowOpacity(0.0f);
+    MOZ_TRY(mWindow->SetWindowIgnoresMouseEvents(true));
+    MOZ_TRY(mWindow->SetAlwaysOnTop(aFloating));
+    MOZ_TRY(mWindow->ShowWithoutActivation(true));
+  } else {
+    if (aVisibility == nsIAppWindow::COMPANION_VISIBILITY_SHOWN) {
+      mWindow->SetWindowOpacity(1.0f);
+      MOZ_TRY(mWindow->SetWindowIgnoresMouseEvents(false));
+    }
+    MOZ_TRY(mWindow->SetAlwaysOnTop(aFloating));
+    if (aVisibility == nsIAppWindow::COMPANION_VISIBILITY_SHOWN) {
+      MOZ_TRY(mWindow->ShowWithoutActivation(true));
+    }
   }
 
-  MOZ_TRY(mWindow->SetAlwaysOnTop(aFloating));
-  if (aVisibility == nsIAppWindow::COMPANION_VISIBILITY_SHOWN) {
-    MOZ_TRY(mWindow->ShowWithoutActivation(true));
+  if (aVisibility != nsIAppWindow::COMPANION_VISIBILITY_UNCHANGED) {
+    const bool hidden = !mWindow->IsVisible();
+    const bool transparent = mWindow->GetWindowOpacity() == 0.0f;
+    const bool ignoresMouseEvents = mWindow->WindowIgnoresMouseEvents();
+    bool stateWasApplied;
+    if (aVisibility == nsIAppWindow::COMPANION_VISIBILITY_HIDDEN) {
+      stateWasApplied = hidden && !transparent && !ignoresMouseEvents;
+    } else if (aVisibility ==
+               nsIAppWindow::COMPANION_VISIBILITY_TRANSPARENT) {
+      stateWasApplied =
+          (!hidden || wasMinimized) && transparent && ignoresMouseEvents;
+    } else {
+      stateWasApplied =
+          (!hidden || wasMinimized) && !transparent && !ignoresMouseEvents;
+    }
+    if (!stateWasApplied) {
+      return NS_ERROR_FAILURE;
+    }
   }
   return NS_OK;
 }
@@ -353,6 +386,27 @@ NS_IMETHODIMP AppWindow::GetCompanionWindowVisible(bool* aVisible) {
   NS_ENSURE_ARG_POINTER(aVisible);
   NS_ENSURE_STATE(mWindow);
   *aVisible = mWindow->IsVisible();
+  return NS_OK;
+}
+
+NS_IMETHODIMP AppWindow::GetCompanionWindowVisibility(uint16_t* aVisibility) {
+  NS_ENSURE_ARG_POINTER(aVisibility);
+  NS_ENSURE_STATE(mWindow);
+
+  if (!mWindow->IsVisible() || mWindow->IsMinimized()) {
+    *aVisibility = nsIAppWindow::COMPANION_VISIBILITY_HIDDEN;
+    return NS_OK;
+  }
+
+  const float opacity = mWindow->GetWindowOpacity();
+  const bool ignoresMouseEvents = mWindow->WindowIgnoresMouseEvents();
+  if (opacity == 0.0f && ignoresMouseEvents) {
+    *aVisibility = nsIAppWindow::COMPANION_VISIBILITY_TRANSPARENT;
+  } else if (opacity == 1.0f && !ignoresMouseEvents) {
+    *aVisibility = nsIAppWindow::COMPANION_VISIBILITY_SHOWN;
+  } else {
+    return NS_ERROR_UNEXPECTED;
+  }
   return NS_OK;
 }
 

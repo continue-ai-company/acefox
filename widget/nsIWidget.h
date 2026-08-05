@@ -1034,6 +1034,30 @@ class nsIWidget : public nsISupports {
   virtual void SetWindowOpacity(float aOpacity) {}
 
   /**
+   * Get the opacity of the window.
+   *
+   * Only implemented for top-level windows on macOS.
+   */
+  virtual float GetWindowOpacity() const { return 1.0f; }
+
+  /**
+   * Set whether a top-level window ignores mouse events.
+   *
+   * Platforms that do not support this operation return
+   * NS_ERROR_NOT_IMPLEMENTED.
+   */
+  virtual nsresult SetWindowIgnoresMouseEvents(bool aIgnore) {
+    return NS_ERROR_NOT_IMPLEMENTED;
+  }
+
+  virtual bool WindowIgnoresMouseEvents() const { return false; }
+
+  /**
+   * Return whether a top-level window is minimized according to native state.
+   */
+  virtual bool IsMinimized() const { return false; }
+
+  /**
    * Set the transform of the window. Values are in device pixels,
    * the origin is the top left corner of the window.
    *

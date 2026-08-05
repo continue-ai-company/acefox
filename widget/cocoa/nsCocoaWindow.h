@@ -55,6 +55,7 @@ class TextInputHandler;
   BOOL mBeingShown;
   BOOL mDrawTitle;
   BOOL mIsAnimationSuppressed;
+  BOOL mSuppressBecomeKeyWindow;
 
   nsTouchBar* mTouchBar;
 }
@@ -86,6 +87,11 @@ class TextInputHandler;
 - (void)setBeingShown:(BOOL)aValue;
 - (BOOL)isBeingShown;
 - (BOOL)isVisibleOrBeingShown;
+
+- (void)setSuppressBecomeKeyWindow:(BOOL)aValue;
+- (BOOL)isBecomeKeyWindowSuppressed;
+- (void)releaseBecomeKeyWindowSuppressionAfterOrdering;
+- (void)releaseBecomeKeyWindowSuppressionIfShown;
 
 - (void)setIsAnimationSuppressed:(BOOL)aValue;
 - (BOOL)isAnimationSuppressed;
@@ -430,6 +436,10 @@ class nsCocoaWindow final : public nsBaseWidget {
   void SetTransparencyMode(TransparencyMode aMode) override;
   void SetWindowShadowStyle(mozilla::WindowShadow aStyle) override;
   void SetWindowOpacity(float aOpacity) override;
+  float GetWindowOpacity() const override;
+  nsresult SetWindowIgnoresMouseEvents(bool aIgnore) override;
+  bool WindowIgnoresMouseEvents() const override;
+  bool IsMinimized() const override;
   void SetWindowTransform(const mozilla::gfx::Matrix& aTransform) override;
   void SetInputRegion(const InputRegion&) override;
   void SetColorScheme(const mozilla::Maybe<mozilla::ColorScheme>&) override;
@@ -476,6 +486,7 @@ class nsCocoaWindow final : public nsBaseWidget {
   void CocoaWindowWillEnterFullscreen(bool aFullscreen);
   void CocoaWindowDidEnterFullscreen(bool aFullscreen);
   void CocoaWindowDidResize();
+  void RestoreKeyWindowAfterDeminiaturize();
   void CocoaSendToplevelActivateEvents();
   void CocoaSendToplevelDeactivateEvents();
 
@@ -526,6 +537,8 @@ class nsCocoaWindow final : public nsBaseWidget {
   // to ensure that macOS run loops which reference the window will still
   // have something to point to even if they don't use proper retain and
   // release patterns.
+  NSWindow* mKeyWindowBeforeDeminiaturize =
+      nil;  // key window restored after a no-activation deminiaturize [STRONG]
   WindowDelegate* mDelegate =
       nullptr;  // our delegate for processing window msgs [STRONG]
   RefPtr<nsMenuBarX> mMenuBar;

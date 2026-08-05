@@ -67,6 +67,7 @@ const CompanionWindowVisibility = Object.freeze({
   Unchanged: "unchanged",
   Shown: "shown",
   Hidden: "hidden",
+  Transparent: "transparent",
 });
 
 /**
@@ -1856,7 +1857,7 @@ class BrowsingContextModule extends RootBiDiModule {
    *     Id of the browsing context whose native window should be updated.
    * @param {"normal"|"floating"} options.level
    *     Native window level to apply.
-   * @param {"unchanged"|"shown"|"hidden"=} options.visibility
+   * @param {"unchanged"|"shown"|"hidden"|"transparent"=} options.visibility
    *     Optional visibility transition. Defaults to "unchanged".
    * @returns {object}
    *     The applied level, visibility, and whether the target is active.
@@ -1907,23 +1908,42 @@ class BrowsingContextModule extends RootBiDiModule {
         Ci.nsIAppWindow.COMPANION_VISIBILITY_SHOWN,
       [CompanionWindowVisibility.Hidden]:
         Ci.nsIAppWindow.COMPANION_VISIBILITY_HIDDEN,
+      [CompanionWindowVisibility.Transparent]:
+        Ci.nsIAppWindow.COMPANION_VISIBILITY_TRANSPARENT,
     }[visibility];
+
+    const waitForDeminiaturize =
+      targetWindow.windowState === targetWindow.STATE_MINIMIZED &&
+      (visibility === CompanionWindowVisibility.Shown ||
+        visibility === CompanionWindowVisibility.Transparent)
+        ? new lazy.EventPromise(targetWindow, "sizemodechange", {
+            checkFn: () =>
+              targetWindow.windowState !== targetWindow.STATE_MINIMIZED,
+            timeout: 1000 * lazy.getTimeoutMultiplier(),
+          })
+        : null;
 
     appWindow.setCompanionWindowState(
       level === CompanionWindowLevel.Floating,
       visibilityValue
     );
+    await waitForDeminiaturize;
+
+    const appliedVisibility = {
+      [Ci.nsIAppWindow.COMPANION_VISIBILITY_SHOWN]:
+        CompanionWindowVisibility.Shown,
+      [Ci.nsIAppWindow.COMPANION_VISIBILITY_HIDDEN]:
+        CompanionWindowVisibility.Hidden,
+      [Ci.nsIAppWindow.COMPANION_VISIBILITY_TRANSPARENT]:
+        CompanionWindowVisibility.Transparent,
+    }[appWindow.companionWindowVisibility];
 
     return {
       level: appWindow.companionWindowFloating
         ? CompanionWindowLevel.Floating
         : CompanionWindowLevel.Normal,
-      visibility: appWindow.companionWindowVisible
-        ? CompanionWindowVisibility.Shown
-        : CompanionWindowVisibility.Hidden,
-      active:
-        appWindow.companionWindowVisible &&
-        Services.focus.activeWindow === targetWindow,
+      visibility: appliedVisibility,
+      active: Services.focus.activeWindow === targetWindow,
     };
   }
 

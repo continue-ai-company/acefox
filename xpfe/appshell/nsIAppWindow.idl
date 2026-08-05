@@ -28,7 +28,7 @@ webidl BrowsingContext;
 
 native LiveResizeListenerArray(nsTArray<RefPtr<mozilla::LiveResizeListener>>);
 
-[builtinclass, scriptable, uuid(3771307a-75db-407e-8ad6-e4705c90fc84)]
+[builtinclass, scriptable, uuid(9a377fed-3b12-4093-8451-6f58d25f18d6)]
 interface nsIAppWindow : nsISupports
 {
   /**
@@ -112,11 +112,23 @@ interface nsIAppWindow : nsISupports
   const unsigned short COMPANION_VISIBILITY_UNCHANGED = 0;
   const unsigned short COMPANION_VISIBILITY_SHOWN = 1;
   const unsigned short COMPANION_VISIBILITY_HIDDEN = 2;
+  const unsigned short COMPANION_VISIBILITY_TRANSPARENT = 3;
 
+  /**
+   * Apply the requested native window level and visibility. Transparent
+   * windows remain ordered and visible while ignoring native mouse events.
+   * Hidden windows are ordered out and have transparent state cleared.
+   */
   void setCompanionWindowState(in boolean floating,
                                in unsigned short visibility);
   readonly attribute boolean companionWindowFloating;
   readonly attribute boolean companionWindowVisible;
+
+  /**
+   * The visibility derived from the current native ordered, minimized,
+   * alpha, and mouse-event state.
+   */
+  readonly attribute unsigned short companionWindowVisibility;
 
   /**
    * Begin assuming |chromeFlags| don't change hereafter, and assert
