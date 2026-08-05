@@ -10,7 +10,7 @@ on:
       release_tag:
         description: Existing multi-platform pre-release tag
         required: true
-        default: acefox-v143.0a1-ai2apps.1
+        default: acefox-v143.0a1-ai2apps.2
         type: string
       release_version:
         description: AceFox version used in asset names

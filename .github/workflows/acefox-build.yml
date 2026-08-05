@@ -21,7 +21,7 @@ on:
       release_tag:
         description: Existing multi-platform pre-release tag
         required: false
-        default: acefox-v143.0a1-ai2apps.1
+        default: acefox-v143.0a1-ai2apps.2
         type: string
       release_version:
         description: AceFox version used in macOS release asset names
@@ -207,6 +207,9 @@ jobs:
           $source = 'D:\Workspace\continueAI\acefox'
           $dist = "$source\obj-x86_64-pc-windows-msvc\dist"
           $output = Join-Path $env:GITHUB_WORKSPACE 'release-output'
+          if (Test-Path -LiteralPath $output) {
+            Remove-Item -LiteralPath $output -Recurse -Force
+          }
           New-Item -ItemType Directory -Path $output -Force | Out-Null
           $profile = Join-Path $env:RUNNER_TEMP 'acefox-smoke-profile'
           $screenshot = Join-Path $env:RUNNER_TEMP 'acefox-smoke.png'
@@ -231,7 +234,12 @@ jobs:
             $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $artifact.FullName).Hash.ToLowerInvariant()
             "$hash  $($artifact.Name)"
           }
-          $checksums | Set-Content -LiteralPath (Join-Path $output 'SHA256SUMS.txt') -Encoding ascii
+          $checksumText = ($checksums -join "`n") + "`n"
+          [System.IO.File]::WriteAllText(
+            (Join-Path $output 'SHA256SUMS.txt'),
+            $checksumText,
+            [System.Text.Encoding]::ASCII
+          )
 
       - name: Upload unsigned build output
         uses: actions/upload-artifact@v4
