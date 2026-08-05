@@ -60,7 +60,7 @@ jobs:
       CCACHE: /opt/homebrew/bin/sccache
       RUSTC_WRAPPER: /opt/homebrew/bin/sccache
       SCCACHE_CACHE_SIZE: 50G
-      SCCACHE_VERBOSE_STATS: "true"
+      SCCACHE_VERBOSE_STATS: "1"
     steps:
       - uses: actions/checkout@v4
         with:
